@@ -12,7 +12,7 @@
 - **Stream 模式** — 默认开启，加速响应
 - **WebUI 控制台** — 浏览器管理模型、技能、定时任务、MCP 服务器
 - **10 个内置技能** — 图片搜索、天气、翻译、摘要、记忆系统等
-- **持久化** — 对话历史 + 用户记忆存磁盘，重启不丢失
+- **SQLite 持久化** — 对话历史 + 用户记忆永久存储（data/bot.db），重启不丢失
 - **定时任务** — Cron 驱动，定时发送研报等
 - **MCP 工具集成** — 搜索 MCP 注册表一键安装
 - **第三方扩展** — 支持从 npm / GitHub / 本地目录加载自定义 Skill
@@ -269,6 +269,54 @@ skills.register({
 });
 ```
 
+## Production Deployment (PM2)
+
+```bash
+# 首次安装（setup.sh 会自动安装 PM2）
+./setup.sh
+
+# 启动（后台运行，自动重启）
+npm run pm2:start
+
+# 查看状态
+npm run pm2:status
+
+# 查看实时日志
+npm run pm2:logs
+
+# 重启
+npm run pm2:restart
+
+# 停止
+npm run pm2:stop
+
+# 开机自启动
+pm2 startup
+pm2 save
+```
+
+PM2 配置文件：`ecosystem.config.cjs`
+
+| 配置项 | 值 | 说明 |
+|---|---|---|
+| 日志路径 | `data/logs/out.log` | 标准输出 |
+| 错误日志 | `data/logs/error.log` | 错误输出 |
+| 自动重启 | 开启 | 崩溃后 5 秒重启，最多 10 次 |
+| 内存限制 | 500MB | 超出自动重启 |
+
+### 数据目录结构
+
+```
+data/
+├── bot.db          # SQLite 数据库（对话历史 + 用户记忆，永久存储）
+├── config.json     # 运行时配置（模型、任务、MCP）
+├── logs/
+│   ├── out.log     # PM2 标准输出日志
+│   └── error.log   # PM2 错误日志
+├── media/          # 图片等媒体缓存
+└── skills/         # 第三方 Skill 安装目录
+```
+
 ## API Endpoints
 
 | Method | Path | Description |
@@ -301,13 +349,19 @@ A: 不需要。长轮询模式，本地运行即可。
 A: 不支持。SDK 自动将 Markdown 转为纯文本。保留换行，去除格式标记。
 
 **Q: 重启后对话会丢失吗？**
-A: 不会。对话历史和记忆都持久化到 `data/` 目录（7 天 TTL）。
+A: 不会。所有数据永久存储在 `data/bot.db`（SQLite），包括对话历史和用户记忆。
 
 **Q: 如何使用中转 API？**
-A: 在模型配置中设置 `baseUrl` 为你的中转地址（如 `https://api.zyai.online/v1`）。
+A: 在模型配置中设置 `baseUrl` 为你的中转地址即可。
 
 **Q: Stream 模式有什么好处？**
 A: 减少首 token 等待时间。虽然微信不支持流式发送，但 stream 让 API 更快开始返回，总响应时间更短。
+
+**Q: 如何部署到生产环境？**
+A: 使用 PM2：`npm run pm2:start`。配合 `pm2 startup && pm2 save` 可实现开机自启动。日志在 `data/logs/`。
+
+**Q: 数据存在哪里？**
+A: 所有数据在 `data/` 目录：`bot.db`（SQLite，对话历史+记忆）、`config.json`（配置）、`logs/`（日志）。备份 `data/` 目录即可迁移。
 
 ## License
 

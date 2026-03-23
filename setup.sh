@@ -180,7 +180,17 @@ install_deps() {
   info "Installing WebUI dependencies..."
   cd "$project_dir/webui"
   npm install
+  npm run build 2>/dev/null || warn "WebUI build skipped (run 'npm run build:webui' later)"
   ok "WebUI dependencies installed"
+
+  # PM2
+  if ! command -v pm2 &>/dev/null; then
+    info "Installing PM2 (process manager)..."
+    npm install -g pm2
+    ok "PM2 installed"
+  else
+    ok "PM2 found: $(pm2 -v)"
+  fi
 
   cd "$project_dir"
 }
@@ -202,14 +212,14 @@ init_env() {
 init_data_dir() {
   local project_dir
   project_dir="$(cd "$(dirname "$0")" && pwd)"
-  mkdir -p "$project_dir/data"
+  mkdir -p "$project_dir/data/logs"
 
   if [[ ! -f "$project_dir/data/config.json" ]] && [[ -f "$project_dir/config.example.json" ]]; then
     cp "$project_dir/config.example.json" "$project_dir/data/config.json"
     warn "Created data/config.json from template — edit it or configure via WebUI"
   fi
 
-  ok "Data directory ready"
+  ok "Data directory ready (data/bot.db will be created on first run)"
 }
 
 # ── 主流程 ──
@@ -234,11 +244,13 @@ main() {
   echo ""
   echo "  Next steps:"
   echo "    1. Edit .env with your API keys"
-  echo "    2. npm run dev        — start bot (dev mode)"
-  echo "    3. npm run webui:dev  — start WebUI (dev mode)"
+  echo "    2. npm run dev           — start (dev mode, auto-reload)"
+  echo "    3. npm run pm2:start     — start (production, background)"
+  echo "    4. npm run pm2:logs      — view logs"
+  echo "    5. npm run pm2:status    — check status"
   echo ""
-  echo "  Or run E2E tests:"
-  echo "    npm run test:e2e"
+  echo "  WebUI: http://localhost:3210"
+  echo "  Tests: npm run test:all"
   echo ""
 }
 

@@ -1,20 +1,25 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MemoryManager, createRememberSkill, createRecallSkill, createForgetSkill } from '../../src/skills/builtin/memory.js';
+import { HistoryStore } from '../../src/utils/history-store.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 describe('Memory System', () => {
   let tmpDir: string;
+  let store: HistoryStore;
   let manager: MemoryManager;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), 'wechat-mem-test-'));
-    manager = new MemoryManager(tmpDir);
+    store = new HistoryStore(tmpDir);
+    await store.init();
+    manager = new MemoryManager(store);
     await manager.init();
   });
 
   afterEach(async () => {
+    await store.close();
     await rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -70,9 +75,12 @@ describe('Memory System', () => {
 
     it('should persist across new manager instances', async () => {
       await manager.set('conv-1', 'name', 'Alice');
-      const manager2 = new MemoryManager(tmpDir);
-      await manager2.init();
+      // Re-open same DB
+      const store2 = new HistoryStore(tmpDir);
+      await store2.init();
+      const manager2 = new MemoryManager(store2);
       const mem = await manager2.get('conv-1', 'name');
+      await store2.close();
       expect(mem?.content).toBe('Alice');
     });
   });

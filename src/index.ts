@@ -38,7 +38,7 @@ async function main() {
   const dataDir = join(process.cwd(), 'data');
   const historyStore = new HistoryStore(dataDir);
   await historyStore.init();
-  logger.info('Conversation history store initialized (persistent, 7-day TTL)');
+  logger.info('SQLite database initialized (data/bot.db)');
 
   // 3. Initialize provider registry
   const providers = new ProviderRegistry();
@@ -65,10 +65,10 @@ async function main() {
     }
   }
 
-  // 5. Initialize memory manager
-  const memoryManager = new MemoryManager(dataDir);
+  // 5. Initialize memory manager (shares SQLite DB with history store)
+  const memoryManager = new MemoryManager(historyStore);
   await memoryManager.init();
-  logger.info('Memory manager initialized (persistent)');
+  logger.info('Memory manager initialized (SQLite, permanent)');
 
   // 6. Initialize skills
   const skills = new SkillRegistry();

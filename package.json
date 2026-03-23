@@ -8,11 +8,16 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.mjs",
+    "start": "npx tsx src/index.ts",
     "dry-run": "tsx src/cli-dry-run.ts",
     "setup": "bash setup.sh",
     "build": "tsup src/index.ts --format esm --dts --clean",
     "build:webui": "cd webui && npm run build",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop wechat-agent-bot",
+    "pm2:restart": "pm2 restart wechat-agent-bot",
+    "pm2:logs": "pm2 logs wechat-agent-bot",
+    "pm2:status": "pm2 status",
     "test": "vitest run --exclude 'tests/e2e/**'",
     "test:e2e": "vitest run tests/e2e/",
     "test:all": "vitest run",
@@ -22,29 +27,31 @@
     "lint": "eslint src/ --ext .ts"
   },
   "dependencies": {
-    "weixin-agent-sdk": "^0.1.0",
-    "openai": "^4.80.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "express": "^5.1.0",
+    "better-sqlite3": "^12.8.0",
     "cors": "^2.8.5",
-    "node-cron": "^3.0.3",
-    "zod": "^3.24.0",
     "dotenv": "^16.4.0",
-    "winston": "^3.17.0"
+    "express": "^5.1.0",
+    "node-cron": "^3.0.3",
+    "openai": "^4.80.0",
+    "weixin-agent-sdk": "^0.1.0",
+    "winston": "^3.17.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
-    "typescript": "^5.8.0",
-    "tsx": "^4.19.0",
-    "tsup": "^8.4.0",
-    "vitest": "^3.1.0",
-    "@types/node": "^22.0.0",
-    "@types/express": "^5.0.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.11",
-    "eslint": "^9.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0"
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
   },
   "license": "MIT"
 }

@@ -1,11 +1,11 @@
 /**
- * Persistent conversation history store.
+ * Persistent conversation history store — SQLite-backed.
  *
- * Stores per-conversation message history as JSON files in data/history/.
- * Survives process restarts. Includes TTL-based expiry and max-length trimming.
+ * All conversation history is stored permanently in data/bot.db.
+ * No TTL — conversations persist forever until explicitly cleared.
  */
-import { readFile, writeFile, mkdir, readdir, unlink, stat } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import Database from 'better-sqlite3';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from './logger.js';
 
@@ -15,131 +15,111 @@ export interface HistoryMessage {
   timestamp?: number;
 }
 
-export interface HistoryEntry {
-  conversationId: string;
-  messages: HistoryMessage[];
-  updatedAt: number;
-}
-
-const DEFAULT_TTL_MS = 7 * 24 * 3600 * 1000; // 7 days
-
 export class HistoryStore {
-  private dir: string;
-  private cache = new Map<string, HistoryEntry>();
-  private ttlMs: number;
-  private dirty = new Set<string>();
-  private flushTimer: ReturnType<typeof setInterval> | null = null;
+  private db: Database.Database;
 
-  constructor(dataDir: string, ttlMs = DEFAULT_TTL_MS) {
-    this.dir = join(dataDir, 'history');
-    this.ttlMs = ttlMs;
+  constructor(dataDir: string) {
+    const dbDir = dataDir;
+    if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
+    const dbPath = join(dbDir, 'bot.db');
+    this.db = new Database(dbPath);
+    this.db.pragma('journal_mode = WAL');
   }
 
   async init(): Promise<void> {
-    if (!existsSync(this.dir)) {
-      await mkdir(this.dir, { recursive: true });
-    }
-    // Periodic flush every 10s
-    this.flushTimer = setInterval(() => this.flushDirty(), 10_000);
-    // Load index on startup (lazy — individual files loaded on access)
-    await this.cleanExpired();
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS idx_history_conv ON history(conversation_id);
+
+      CREATE TABLE IF NOT EXISTS memories (
+        conversation_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        PRIMARY KEY (conversation_id, key)
+      );
+    `);
+    logger.info(`SQLite database initialized: ${this.db.name}`);
   }
 
   async get(conversationId: string): Promise<HistoryMessage[]> {
-    // Check cache
-    const cached = this.cache.get(conversationId);
-    if (cached) return cached.messages;
-
-    // Load from disk
-    const filePath = this.filePath(conversationId);
-    try {
-      if (existsSync(filePath)) {
-        const raw = await readFile(filePath, 'utf-8');
-        const entry: HistoryEntry = JSON.parse(raw);
-        // Check TTL
-        if (Date.now() - entry.updatedAt > this.ttlMs) {
-          await unlink(filePath).catch(() => {});
-          return [];
-        }
-        this.cache.set(conversationId, entry);
-        return entry.messages;
-      }
-    } catch {
-      // Corrupted file, start fresh
-    }
-    return [];
+    const rows = this.db.prepare(
+      'SELECT role, content, created_at as timestamp FROM history WHERE conversation_id = ? ORDER BY id ASC',
+    ).all(conversationId) as Array<{ role: string; content: string; timestamp: number }>;
+    return rows.map((r) => ({
+      role: r.role,
+      content: JSON.parse(r.content),
+      timestamp: r.timestamp * 1000,
+    }));
   }
 
   async set(conversationId: string, messages: HistoryMessage[]): Promise<void> {
-    const entry: HistoryEntry = {
-      conversationId,
-      messages,
-      updatedAt: Date.now(),
-    };
-    this.cache.set(conversationId, entry);
-    this.dirty.add(conversationId);
+    const tx = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM history WHERE conversation_id = ?').run(conversationId);
+      const insert = this.db.prepare(
+        'INSERT INTO history (conversation_id, role, content) VALUES (?, ?, ?)',
+      );
+      for (const msg of messages) {
+        insert.run(conversationId, msg.role, JSON.stringify(msg.content));
+      }
+    });
+    tx();
   }
 
   async append(conversationId: string, message: HistoryMessage): Promise<void> {
-    const messages = await this.get(conversationId);
-    messages.push({ ...message, timestamp: Date.now() });
-    await this.set(conversationId, messages);
+    this.db.prepare(
+      'INSERT INTO history (conversation_id, role, content) VALUES (?, ?, ?)',
+    ).run(conversationId, message.role, JSON.stringify(message.content));
   }
 
   async clear(conversationId: string): Promise<void> {
-    this.cache.delete(conversationId);
-    this.dirty.delete(conversationId);
-    const filePath = this.filePath(conversationId);
-    await unlink(filePath).catch(() => {});
-  }
-
-  async flushDirty(): Promise<void> {
-    for (const id of this.dirty) {
-      const entry = this.cache.get(id);
-      if (!entry) continue;
-      try {
-        await writeFile(this.filePath(id), JSON.stringify(entry), 'utf-8');
-      } catch (err) {
-        logger.error(`Failed to persist history for ${id}: ${(err as Error).message}`);
-      }
-    }
-    this.dirty.clear();
-  }
-
-  async flushAll(): Promise<void> {
-    // Mark all cached as dirty then flush
-    for (const id of this.cache.keys()) {
-      this.dirty.add(id);
-    }
-    await this.flushDirty();
+    this.db.prepare('DELETE FROM history WHERE conversation_id = ?').run(conversationId);
   }
 
   async close(): Promise<void> {
-    if (this.flushTimer) clearInterval(this.flushTimer);
-    await this.flushAll();
+    this.db.close();
   }
 
-  private async cleanExpired(): Promise<void> {
-    try {
-      if (!existsSync(this.dir)) return;
-      const files = await readdir(this.dir);
-      const now = Date.now();
-      for (const file of files) {
-        if (!file.endsWith('.json')) continue;
-        const filePath = join(this.dir, file);
-        try {
-          const st = await stat(filePath);
-          if (now - st.mtimeMs > this.ttlMs) {
-            await unlink(filePath);
-          }
-        } catch {}
-      }
-    } catch {}
+  // ── Memory methods (used by MemoryManager) ──
+
+  getMemory(conversationId: string, key: string): { content: string; createdAt: number; updatedAt: number } | undefined {
+    const row = this.db.prepare(
+      'SELECT content, created_at, updated_at FROM memories WHERE conversation_id = ? AND key = ?',
+    ).get(conversationId, key) as any;
+    if (!row) return undefined;
+    return { content: row.content, createdAt: row.created_at * 1000, updatedAt: row.updated_at * 1000 };
   }
 
-  private filePath(conversationId: string): string {
-    // Sanitize conversationId for filesystem
-    const safe = conversationId.replace(/[^a-zA-Z0-9_@.-]/g, '_');
-    return join(this.dir, `${safe}.json`);
+  getAllMemories(conversationId: string): Record<string, { key: string; content: string; createdAt: number; updatedAt: number }> {
+    const rows = this.db.prepare(
+      'SELECT key, content, created_at, updated_at FROM memories WHERE conversation_id = ?',
+    ).all(conversationId) as any[];
+    const result: Record<string, any> = {};
+    for (const r of rows) {
+      result[r.key] = { key: r.key, content: r.content, createdAt: r.created_at * 1000, updatedAt: r.updated_at * 1000 };
+    }
+    return result;
+  }
+
+  setMemory(conversationId: string, key: string, content: string): void {
+    this.db.prepare(`
+      INSERT INTO memories (conversation_id, key, content, updated_at)
+      VALUES (?, ?, ?, unixepoch())
+      ON CONFLICT(conversation_id, key) DO UPDATE SET content = excluded.content, updated_at = unixepoch()
+    `).run(conversationId, key, content);
+  }
+
+  deleteMemory(conversationId: string, key: string): boolean {
+    const result = this.db.prepare(
+      'DELETE FROM memories WHERE conversation_id = ? AND key = ?',
+    ).run(conversationId, key);
+    return result.changes > 0;
   }
 }
