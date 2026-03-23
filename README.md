@@ -150,6 +150,8 @@ OPENAI_MODEL=gpt-4o
 ```
 所有兼容 OpenAI 格式的 API 都走 `openai` provider + 自定义 `baseUrl`。
 
+> 💡 **推荐中转**：没有海外 API 的用户可使用 [zyai.online](https://api.zyai.online/register/?aff_code=Xj4T) 中转服务，支持 OpenAI / Claude / GPT-5 等主流模型，配置 `baseUrl` 为 `https://api.zyai.online/v1` 即可。
+
 ### 多模型配置示例（data/config.json）
 
 ```json
