@@ -1,0 +1,64 @@
+{
+  "server": {
+    "port": 3210,
+    "host": "127.0.0.1"
+  },
+  "defaultProvider": "openai",
+  "models": [
+    {
+      "id": "openai-default",
+      "name": "OpenAI GPT-4o",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "apiKey": "",
+      "baseUrl": "https://api.openai.com/v1",
+      "systemPrompt": "You are a helpful WeChat assistant. Reply in the same language the user uses. Be concise.",
+      "maxHistory": 50,
+      "stream": true
+    },
+    {
+      "id": "anthropic-default",
+      "name": "Claude Sonnet 4",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-20250514",
+      "apiKey": "",
+      "systemPrompt": "You are a helpful WeChat assistant. Reply in the same language the user uses. Be concise.",
+      "maxHistory": 50
+    },
+    {
+      "id": "claude-local",
+      "name": "Claude Code (Local Session)",
+      "provider": "claude-code",
+      "model": "sonnet",
+      "apiKey": "local",
+      "systemPrompt": "You are a helpful WeChat assistant. Reply in the same language the user uses. Be concise."
+    },
+    {
+      "id": "kimi",
+      "name": "Kimi (Moonshot)",
+      "provider": "openai",
+      "model": "moonshot-v1-8k",
+      "apiKey": "",
+      "baseUrl": "https://api.moonshot.cn/v1"
+    },
+    {
+      "id": "glm",
+      "name": "GLM-4 (Zhipu)",
+      "provider": "openai",
+      "model": "glm-4",
+      "apiKey": "",
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4"
+    },
+    {
+      "id": "minimax",
+      "name": "MiniMax",
+      "provider": "openai",
+      "model": "abab6.5s-chat",
+      "apiKey": "",
+      "baseUrl": "https://api.minimax.chat/v1"
+    }
+  ],
+  "scheduledTasks": [],
+  "skills": [],
+  "mcpServers": []
+}
