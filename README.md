@@ -1,370 +1,338 @@
+<div align="center">
+
 # WeChat Agent Bot
 
-微信 AI 智能助手 — 一键安装，多模型切换，WebUI 配置，定时任务，记忆系统，MCP 工具集成。
+### **your AI, in WeChat.**
 
-基于 [weixin-agent-sdk](https://github.com/wong2/weixin-agent-sdk)（OpenClaw 协议），本地 `npm install` 即可运行。
+Multi-model AI assistant for WeChat with WebUI, Skills, MCP tools, and persistent memory.
+
+[![GitHub Stars](https://img.shields.io/github/stars/ChenYCL/wechat-agent-bot?style=social)](https://github.com/ChenYCL/wechat-agent-bot)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js 22+](https://img.shields.io/badge/Node.js-22+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Tests](https://img.shields.io/badge/Tests-69%20passed-brightgreen)](tests/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/ChenYCL/wechat-agent-bot/pulls)
+
+[简体中文](#简体中文) | [English](#english)
+
+**Supported Providers**
+
+[![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white)](https://openai.com)
+[![Anthropic](https://img.shields.io/badge/Claude-d4a27f?style=for-the-badge&logo=anthropic&logoColor=white)](https://anthropic.com)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-000?style=for-the-badge&logo=anthropic&logoColor=white)](https://docs.anthropic.com/en/docs/claude-code)
+[![Kimi](https://img.shields.io/badge/Kimi-5C6BC0?style=for-the-badge)](https://moonshot.cn)
+[![GLM](https://img.shields.io/badge/GLM--4-FF6F00?style=for-the-badge)](https://open.bigmodel.cn)
+
+<br />
+
+[Quick Start](#-quick-start) · [Features](#-features) · [Screenshots](#-screenshots) · [Commands](#-wechat-commands) · [Deploy](#-production-pm2)
+
+</div>
+
+---
+
+<a name="english"></a>
+
+## The Problem
+
+You want an AI assistant **in WeChat** — but existing solutions require servers, complex deployment, or are locked to one model. Switching between GPT-4o and Claude means running two bots.
+
+## The Solution
+
+**WeChat Agent Bot** connects WeChat to any AI model through a simple local install. One `npm install`, scan a QR code, done. Switch models with `/model`, remember context across restarts, extend with Skills and MCP tools.
+
+|  | Without this | With WeChat Agent Bot |
+|--|-------------|----------------------|
+| **Multi-model** | One bot per model | `/model kimi` to switch instantly |
+| **Memory** | Lost on restart | SQLite — permanent, survives restarts |
+| **Extensibility** | Hard-coded | 11 Skills + MCP ecosystem + npm/GitHub plugins |
+| **Management** | Edit config files | WebUI at `localhost:3210` |
+| **Deployment** | Complex | `./setup.sh && npm run pm2:start` |
+
+---
 
 ## Features
 
-- **多模型支持** — OpenAI / Anthropic / Claude Code (本地session) / Kimi / GLM / MiniMax 等
-- **中转代理** — 每个模型可配独立 baseURL，兼容任意 OpenAI 格式 API
-- **Claude Code 集成** — 复用本地 Claude Code 订阅，不需要 API Key
-- **Stream 模式** — 默认开启，加速响应
-- **WebUI 控制台** — 浏览器管理模型、技能、定时任务、MCP 服务器
-- **10 个内置技能** — 图片搜索、天气、翻译、摘要、记忆系统等
-- **SQLite 持久化** — 对话历史 + 用户记忆永久存储（data/bot.db），重启不丢失
-- **定时任务** — Cron 驱动，定时发送研报等
-- **MCP 工具集成** — 搜索 MCP 注册表一键安装
-- **第三方扩展** — 支持从 npm / GitHub / 本地目录加载自定义 Skill
-- **一键安装** — `./setup.sh` 自动装 Node.js、Python、所有依赖
+- **Multi-model** — OpenAI / Anthropic / Claude Code (local session) / Kimi / GLM / MiniMax + any OpenAI-compatible API
+- **Relay/Proxy** — per-model `baseUrl` for API relay services
+- **Claude Code integration** — reuse your local Claude Code subscription, no API key needed
+- **Stream mode** — enabled by default for faster responses
+- **WebUI dashboard** — manage models, skills, tasks, MCP servers from browser
+- **11 built-in Skills** — image search, weather, translate, summarize, memory, language preference
+- **SQLite persistence** — conversation history + user memories stored permanently in `data/bot.db`
+- **Scheduled tasks** — cron-based, auto-send research reports etc.
+- **MCP tools** — search MCP registry, one-click install
+- **Third-party plugins** — load custom Skills from npm / GitHub / local directory
+- **One-command setup** — `./setup.sh` auto-installs Node.js, Python, PM2, all deps
+- **Security** — API auth, CORS restriction, input validation, key masking, prototype pollution protection
+
+---
+
+## Screenshots
+
+| Status | Models |
+|:---:|:---:|
+| ![Status](docs/screenshots/status.png) | ![Models](docs/screenshots/models.png) |
+
+| Skills & Test | MCP Servers |
+|:---:|:---:|
+| ![Skills](docs/screenshots/skills.png) | ![MCP](docs/screenshots/mcp.png) |
+
+---
 
 ## Quick Start
 
-### 1. 安装
+### 1. Install
 
 ```bash
-# 方式一：一键安装（推荐，自动装 Node.js >=22）
+git clone https://github.com/ChenYCL/wechat-agent-bot.git
+cd wechat-agent-bot
+
+# One-command setup (auto-installs Node.js 22+, PM2, builds WebUI)
 ./setup.sh
-
-# 方式二：手动（需要 Node.js >=22）
-npm install
-cd webui && npm install && npm run build && cd ..
-cp .env.example .env
 ```
 
-### 2. 配置
-
-编辑 `.env`，填入你的 API Key：
+### 2. Configure
 
 ```bash
-# OpenAI 或兼容 API（如中转）
-OPENAI_API_KEY=sk-your-key
-OPENAI_BASE_URL=https://api.openai.com/v1    # 中转改这里
+vim .env
+```
+
+```env
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://api.openai.com/v1   # or your relay URL
 OPENAI_MODEL=gpt-4o
-
-# Anthropic（可选）
-ANTHROPIC_API_KEY=sk-ant-your-key
-ANTHROPIC_MODEL=claude-sonnet-4-20250514
 ```
 
-也可以通过 `data/config.json` 配置多个模型，或启动后在 WebUI 中配置。
+> **Relay service**: Users without direct API access can use [zyai.online](https://api.zyai.online/register/?aff_code=Xj4T) — supports OpenAI / Claude / GPT-5, set `baseUrl` to `https://api.zyai.online/v1`.
 
-### 3. 启动
+### 3. Start
 
 ```bash
-npm run dev
+npm run dev    # Development (auto-reload)
 ```
 
-终端会打印二维码，**用微信扫码**即可连接。
+Scan the QR code with WeChat. Done.
 
 ```
-✅ 与微信连接成功！
-WebUI & API server running at http://localhost:3210
+✅ Connected to WeChat!
+WebUI running at http://localhost:3210
 ```
 
-### 4. 使用
+---
 
-在微信中给 bot 发消息即可对话。支持以下命令：
+## Three Usage Modes
 
-| 命令 | 说明 |
+**Mode 1: Third-party API Key** (recommended for standalone deployment)
+```env
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
+
+**Mode 2: Claude Code Local Session** (reuse your subscription)
+```json
+{ "provider": "claude-code", "model": "sonnet", "apiKey": "local" }
+```
+
+**Mode 3: Chinese models** (Kimi / GLM / MiniMax — all OpenAI-compatible)
+```json
+{ "provider": "openai", "model": "moonshot-v1-8k", "baseUrl": "https://api.moonshot.cn/v1" }
+```
+
+---
+
+## WeChat Commands
+
+| Command | Description |
 |---|---|
-| `/help` | 查看所有可用命令 |
-| `/model list` | 列出所有模型 |
-| `/model <id>` | 切换模型 |
-| `/clear` | 清空当前对话历史 |
-| `/image <关键词>` | 搜索图片并发送到微信 |
-| `/image url <https://...>` | 下载图片并发送 |
-| `/weather <城市>` | 查天气（免费 API，无需 Key） |
-| `/translate <语言> <文本>` | 翻译（调用当前 AI） |
-| `/summary <URL 或文本>` | 网页/文本摘要 |
-| `/remember <key> <内容>` | 保存记忆 |
-| `/recall [key]` | 查看记忆 |
-| `/forget <key>` | 删除记忆 |
+| `/help` | List all commands |
+| `/model list` | Show available models |
+| `/model <id>` | Switch model |
+| `/lang 中文` | Set reply language |
+| `/image cat` | Search & send image |
+| `/weather Beijing` | Weather (free API) |
+| `/translate English 你好` | Translate via AI |
+| `/summary https://...` | Summarize URL or text |
+| `/remember name Alice` | Save memory |
+| `/recall` | List all memories |
+| `/forget name` | Delete memory |
+| `/clear` | Clear conversation |
+
+---
 
 ## Architecture
 
 ```
+WeChat Message → weixin-agent-sdk → MessageRouter
+  ├─ /command → SkillRegistry → Built-in or third-party Skill
+  └─ text → MemoryManager (inject context) → ProviderRegistry
+       ├─ OpenAIProvider (stream)
+       ├─ AnthropicProvider (stream)
+       └─ ClaudeCodeProvider (local CLI session)
+  → Response sent back to WeChat
+```
+
+```
 wechat-agent-bot/
 ├── src/
-│   ├── index.ts              # 主入口，启动所有模块
-│   ├── core/
-│   │   ├── types.ts          # 类型定义（兼容 weixin-agent-sdk）
-│   │   ├── bot.ts            # 微信 Bot 生命周期管理
-│   │   ├── router.ts         # 消息路由（skill → provider）
-│   │   └── dry-run.ts        # Dry-run 测试模式
-│   ├── providers/
-│   │   ├── base.ts           # Provider 基类（持久化历史）
-│   │   ├── openai.ts         # OpenAI 兼容（stream + baseURL 中转）
-│   │   ├── anthropic.ts      # Anthropic Claude（stream）
-│   │   ├── claude-code.ts    # Claude Code 本地 session（复用订阅）
-│   │   └── registry.ts       # Provider 注册中心
-│   ├── scheduler/            # Cron 定时任务
-│   ├── mcp/                  # MCP 协议客户端
-│   ├── skills/
-│   │   ├── registry.ts       # Skill 注册中心
-│   │   ├── loader.ts         # 第三方 Skill 加载器（npm/GitHub/本地）
-│   │   └── builtin/          # 10 个内置 Skill
-│   ├── config/               # JSON 配置持久化
-│   ├── server/               # Express API + WebUI 静态文件
-│   └── utils/
-│       ├── history-store.ts  # 对话历史持久化（data/history/）
-│       └── logger.ts         # Winston 日志
-├── webui/                    # Vite + React + Tailwind 前端
-├── tests/                    # 69 个测试
-├── data/                     # 运行时数据（config, history, memories）
-├── setup.sh                  # 一键安装脚本
-└── .env                      # 环境变量配置
+│   ├── index.ts               # Entry point
+│   ├── core/                   # Bot lifecycle, router, types
+│   ├── providers/              # OpenAI, Anthropic, Claude Code
+│   ├── skills/                 # 11 built-in + dynamic loader
+│   ├── scheduler/              # Cron task manager
+│   ├── mcp/                    # MCP protocol client
+│   ├── config/                 # JSON config persistence
+│   ├── server/                 # Express API + WebUI static
+│   └── utils/                  # SQLite store, logger
+├── webui/                      # React + Tailwind SPA
+├── tests/                      # 69 tests (unit + E2E + WeChat integration)
+├── data/                       # Runtime: bot.db, config.json, logs/
+├── ecosystem.config.cjs        # PM2 config
+└── setup.sh                    # One-command installer
 ```
 
-## Configuration
+---
 
-### 三种使用模式
+## Production (PM2)
 
-**模式一：第三方 API Key（推荐独立部署）**
-```env
-OPENAI_API_KEY=sk-xxx
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4o
+```bash
+# Start (background, auto-restart on crash)
+npm run pm2:start
+
+# View logs
+npm run pm2:logs
+
+# Status / restart / stop
+npm run pm2:status
+npm run pm2:restart
+npm run pm2:stop
+
+# Auto-start on boot
+pm2 startup && pm2 save
 ```
 
-**模式二：Claude Code 本地 Session（需要安装 Claude Code CLI）**
-```json
-{
-  "id": "claude-local",
-  "provider": "claude-code",
-  "model": "sonnet",
-  "apiKey": "local"
-}
+| Config | Value | Note |
+|---|---|---|
+| Log path | `data/logs/out.log` | stdout |
+| Error log | `data/logs/error.log` | stderr |
+| Auto-restart | On | 5s delay, max 10 retries |
+| Memory limit | 500MB | Auto-restart on exceed |
+
+### Data Directory
+
 ```
-复用你的 Claude Code 订阅（Max/Pro/Team），不需要 API Key。
-
-**模式三：国产模型（Kimi / GLM / MiniMax）**
-```json
-{
-  "id": "kimi",
-  "provider": "openai",
-  "model": "moonshot-v1-8k",
-  "apiKey": "your-kimi-key",
-  "baseUrl": "https://api.moonshot.cn/v1"
-}
-```
-所有兼容 OpenAI 格式的 API 都走 `openai` provider + 自定义 `baseUrl`。
-
-> 💡 **推荐中转**：没有海外 API 的用户可使用 [zyai.online](https://api.zyai.online/register/?aff_code=Xj4T) 中转服务，支持 OpenAI / Claude / GPT-5 等主流模型，配置 `baseUrl` 为 `https://api.zyai.online/v1` 即可。
-
-### 多模型配置示例（data/config.json）
-
-```json
-{
-  "models": [
-    {
-      "id": "gpt-4o",
-      "name": "GPT-4o",
-      "provider": "openai",
-      "model": "gpt-4o",
-      "apiKey": "sk-xxx",
-      "baseUrl": "https://api.openai.com/v1",
-      "stream": true,
-      "maxHistory": 50,
-      "systemPrompt": "You are a helpful assistant."
-    },
-    {
-      "id": "claude",
-      "name": "Claude Sonnet",
-      "provider": "anthropic",
-      "model": "claude-sonnet-4-20250514",
-      "apiKey": "sk-ant-xxx"
-    },
-    {
-      "id": "claude-local",
-      "name": "Claude Code (Local)",
-      "provider": "claude-code",
-      "model": "sonnet",
-      "apiKey": "local"
-    }
-  ]
-}
+data/
+├── bot.db          # SQLite (conversation history + memories, permanent)
+├── config.json     # Runtime config (models, tasks, MCP)
+├── logs/           # PM2 logs
+├── media/          # Image cache
+└── skills/         # Third-party skill installs
 ```
 
-### 定时任务
-
-```json
-{
-  "scheduledTasks": [
-    {
-      "id": "morning-report",
-      "name": "每日早报",
-      "cron": "0 9 * * *",
-      "enabled": true,
-      "type": "report",
-      "config": { "topic": "AI industry news" }
-    }
-  ]
-}
-```
-
-### MCP 服务器
-
-```json
-{
-  "mcpServers": [
-    {
-      "id": "filesystem",
-      "name": "Filesystem",
-      "command": "npx",
-      "args": ["@modelcontextprotocol/server-filesystem", "/tmp"],
-      "enabled": true
-    }
-  ]
-}
-```
-
-## WeChat 消息格式
-
-SDK 会自动将 AI 回复中的 **Markdown 转为纯文本**发送（微信不支持 Markdown 渲染）：
-
-- `**bold**` → `bold`
-- `` `code` `` → `code`
-- `[link](url)` → `link`
-- 代码块 → 保留代码内容，去掉 ``` 标记
-- 表格 → 空格分隔
-- 换行保留
-
-如果需要富文本效果，可以考虑生成图片发送（media response）。
+---
 
 ## Development
 
 ```bash
-npm run test          # 单元测试（23 个）
-npm run test:e2e      # E2E 测试（46 个，含微信集成 + WebUI）
-npm run test:all      # 全部 69 个
-npm run dry-run       # 终端交互测试（不需要微信）
-npm run webui:dev     # WebUI 开发模式（http://localhost:5173）
+npm run test          # Unit tests (23)
+npm run test:e2e      # E2E tests (46, includes WeChat mock server)
+npm run test:all      # All 69 tests
+npm run dry-run       # Terminal chat without WeChat
+npm run webui:dev     # WebUI dev server (port 5173)
 ```
 
-### 添加自定义 Provider
-
-```typescript
-import { ProviderRegistry } from './providers/registry.js';
-
-registry.registerFactory('my-provider', (config) => ({
-  id: config.id,
-  name: config.name,
-  config,
-  async chat(request) {
-    return { text: `Custom reply to: ${request.text}` };
-  },
-}));
-```
-
-### 添加自定义 Skill
-
-```typescript
-import { SkillRegistry } from './skills/registry.js';
-
-skills.register({
-  name: 'weather',
-  description: 'Get weather info',
-  async execute(request) {
-    return { text: `Weather for: ${request.text}` };
-  },
-});
-```
-
-## Production Deployment (PM2)
-
-```bash
-# 首次安装（setup.sh 会自动安装 PM2）
-./setup.sh
-
-# 启动（后台运行，自动重启）
-npm run pm2:start
-
-# 查看状态
-npm run pm2:status
-
-# 查看实时日志
-npm run pm2:logs
-
-# 重启
-npm run pm2:restart
-
-# 停止
-npm run pm2:stop
-
-# 开机自启动
-pm2 startup
-pm2 save
-```
-
-PM2 配置文件：`ecosystem.config.cjs`
-
-| 配置项 | 值 | 说明 |
-|---|---|---|
-| 日志路径 | `data/logs/out.log` | 标准输出 |
-| 错误日志 | `data/logs/error.log` | 错误输出 |
-| 自动重启 | 开启 | 崩溃后 5 秒重启，最多 10 次 |
-| 内存限制 | 500MB | 超出自动重启 |
-
-### 数据目录结构
-
-```
-data/
-├── bot.db          # SQLite 数据库（对话历史 + 用户记忆，永久存储）
-├── config.json     # 运行时配置（模型、任务、MCP）
-├── logs/
-│   ├── out.log     # PM2 标准输出日志
-│   └── error.log   # PM2 错误日志
-├── media/          # 图片等媒体缓存
-└── skills/         # 第三方 Skill 安装目录
-```
+---
 
 ## API Endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/status` | 系统状态 |
-| GET | `/api/config` | 配置信息（key 脱敏） |
-| POST | `/api/config/save` | 保存配置 |
-| GET | `/api/models` | 模型列表 |
-| POST | `/api/models` | 添加模型 |
-| PUT | `/api/models/:id` | 更新模型 |
-| DELETE | `/api/models/:id` | 删除模型 |
-| POST | `/api/models/:id/activate` | 激活模型 |
-| GET | `/api/tasks` | 定时任务列表 |
-| POST | `/api/tasks` | 添加任务 |
-| PUT | `/api/tasks/:id` | 更新任务 |
-| DELETE | `/api/tasks/:id` | 删除任务 |
-| GET | `/api/mcp` | MCP 服务器和工具 |
-| POST | `/api/mcp` | 添加 MCP 服务器 |
-| DELETE | `/api/mcp/:id` | 删除 MCP 服务器 |
+| GET | `/api/status` | System status |
+| GET/POST | `/api/models` | Model CRUD |
+| POST | `/api/models/:id/activate` | Set active model |
+| GET/POST | `/api/skills` | Skill management |
+| POST | `/api/skills/install-npm` | Install skill from npm |
+| POST | `/api/skills/install-github` | Install skill from GitHub |
+| GET/POST | `/api/tasks` | Scheduled task CRUD |
+| GET/POST | `/api/mcp` | MCP server management |
+| GET | `/api/mcp/search?q=` | Search MCP registry |
+| POST | `/api/status/test-message` | Dry-run message test |
+| GET | `/api/config` | Config (keys masked) |
+
+---
 
 ## FAQ
 
-**Q: 需要升级微信版本吗？**
-A: 不需要。SDK 使用 OpenClaw 长轮询协议（服务端 API），只要微信能扫码即可。
+**Q: Do I need to upgrade WeChat?**
+No. The SDK uses OpenClaw long-polling protocol. Any WeChat that can scan QR codes works.
 
-**Q: 需要公网服务器吗？**
-A: 不需要。长轮询模式，本地运行即可。
+**Q: Do I need a public server?**
+No. Long-polling mode, runs locally.
 
-**Q: 微信支持 Markdown 吗？**
-A: 不支持。SDK 自动将 Markdown 转为纯文本。保留换行，去除格式标记。
+**Q: Will conversations survive restarts?**
+Yes. All data is permanently stored in `data/bot.db` (SQLite).
 
-**Q: 重启后对话会丢失吗？**
-A: 不会。所有数据永久存储在 `data/bot.db`（SQLite），包括对话历史和用户记忆。
+**Q: How to use API relay/proxy?**
+Set `baseUrl` in model config to your relay address.
 
-**Q: 如何使用中转 API？**
-A: 在模型配置中设置 `baseUrl` 为你的中转地址即可。
+**Q: How to deploy to production?**
+`npm run pm2:start` + `pm2 startup && pm2 save` for auto-start on boot. Logs in `data/logs/`.
 
-**Q: Stream 模式有什么好处？**
-A: 减少首 token 等待时间。虽然微信不支持流式发送，但 stream 让 API 更快开始返回，总响应时间更短。
+**Q: How to backup/migrate?**
+Copy the entire `data/` directory. That's it.
 
-**Q: 如何部署到生产环境？**
-A: 使用 PM2：`npm run pm2:start`。配合 `pm2 startup && pm2 save` 可实现开机自启动。日志在 `data/logs/`。
+---
 
-**Q: 数据存在哪里？**
-A: 所有数据在 `data/` 目录：`bot.db`（SQLite，对话历史+记忆）、`config.json`（配置）、`logs/`（日志）。备份 `data/` 目录即可迁移。
+<a name="简体中文"></a>
+
+## 简体中文
+
+微信 AI 智能助手 — 一键安装，多模型切换，WebUI 配置，定时任务，记忆系统，MCP 工具集成。
+
+基于 [weixin-agent-sdk](https://github.com/wong2/weixin-agent-sdk)（OpenClaw 协议），本地 `npm install` 即可运行。
+
+### 快速开始
+
+```bash
+git clone https://github.com/ChenYCL/wechat-agent-bot.git
+cd wechat-agent-bot
+./setup.sh              # 一键安装（自动装 Node.js 22+、PM2、构建 WebUI）
+vim .env                # 填入 API Key
+npm run dev             # 开发模式启动，扫码连接微信
+npm run pm2:start       # 生产模式（后台运行）
+```
+
+### 功能亮点
+
+- **多模型** — OpenAI / Anthropic / Claude Code / Kimi / GLM / MiniMax
+- **中转代理** — 每个模型可配独立 baseURL
+- **11 个内置技能** — 图片搜索、天气、翻译、摘要、记忆、语言偏好
+- **SQLite 持久化** — 对话历史 + 用户记忆永久存储
+- **WebUI 管理** — 浏览器管理模型、技能、定时任务、MCP
+- **第三方扩展** — npm / GitHub / 本地目录加载自定义 Skill
+- **MCP 集成** — 搜索注册表一键安装工具
+- **PM2 部署** — 后台运行、自动重启、开机自启
+
+> **推荐中转**：没有海外 API 的用户可使用 [zyai.online](https://api.zyai.online/register/?aff_code=Xj4T) 中转服务，支持 OpenAI / Claude / GPT-5 等主流模型。
+
+### 微信命令
+
+| 命令 | 说明 |
+|---|---|
+| `/help` | 查看所有命令 |
+| `/model list` | 列出模型 |
+| `/model <id>` | 切换模型 |
+| `/lang 中文` | 设置回复语言 |
+| `/image <关键词>` | 搜索图片发送 |
+| `/weather <城市>` | 查天气 |
+| `/translate <语言> <文本>` | 翻译 |
+| `/summary <URL>` | 网页摘要 |
+| `/remember <key> <内容>` | 保存记忆 |
+| `/recall` | 查看记忆 |
+| `/forget <key>` | 删除记忆 |
+| `/clear` | 清空对话 |
+
+---
 
 ## License
 
-MIT
+[MIT](LICENSE) © [ChenYCL](https://github.com/ChenYCL)
