@@ -6,12 +6,14 @@ import type { Agent, ChatRequest, ChatResponse } from './types.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { SkillRegistry } from '../skills/registry.js';
 import type { MemoryManager } from '../skills/builtin/memory.js';
+import { getLangPreference } from '../skills/builtin/lang.js';
 import { logger } from '../utils/logger.js';
 
 export class MessageRouter implements Agent {
   private providerRegistry: ProviderRegistry;
   private skillRegistry: SkillRegistry;
   private memoryManager: MemoryManager | null;
+  private prompted = new Set<string>(); // track conversations that got the lang prompt
 
   constructor(
     providerRegistry: ProviderRegistry,
@@ -39,21 +41,44 @@ export class MessageRouter implements Agent {
       }
     }
 
-    // Route to active provider
+    // First message: check if language preference is set
+    if (this.memoryManager && !this.prompted.has(request.conversationId)) {
+      this.prompted.add(request.conversationId);
+      const lang = await getLangPreference(this.memoryManager, request.conversationId);
+      if (!lang) {
+        // No lang set — remind once, then continue processing the message normally
+        const reminder = '💡 提示：发送 /lang 中文 可设置回复语言偏好\n━━━━━━━━━━\n';
+        const reply = await this.routeToProvider(request);
+        return { ...reply, text: reply.text ? `${reminder}${reply.text}` : reminder };
+      }
+    }
+
+    return this.routeToProvider(request);
+  }
+
+  private async routeToProvider(request: ChatRequest): Promise<ChatResponse> {
     const provider = this.providerRegistry.getActive();
     if (!provider) {
       return { text: '⚠️ 未配置 AI 模型\n\n请通过 WebUI 配置模型，或发送 /model list 查看。' };
     }
 
     try {
-      // Inject memory context into the request text if memories exist
-      let enrichedRequest = request;
+      // Build context: memory + language preference
+      let contextPrefix = '';
       if (this.memoryManager) {
         const memCtx = await this.memoryManager.buildContext(request.conversationId);
-        if (memCtx && request.text) {
-          enrichedRequest = { ...request, text: `${memCtx}\n${request.text}` };
+        if (memCtx) contextPrefix += memCtx;
+
+        const lang = await getLangPreference(this.memoryManager, request.conversationId);
+        if (lang) {
+          contextPrefix += `\n[IMPORTANT: Always reply in ${lang}. This is the user's language preference.]\n`;
         }
       }
+
+      const enrichedRequest = contextPrefix && request.text
+        ? { ...request, text: `${contextPrefix}\n${request.text}` }
+        : request;
+
       return await provider.chat(enrichedRequest);
     } catch (err) {
       const rawMsg = (err as Error).message || 'Unknown error';

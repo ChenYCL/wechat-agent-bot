@@ -17,6 +17,7 @@ import { createHelpSkill } from './skills/builtin/help.js';
 import { createModelSkill } from './skills/builtin/model.js';
 import { createClearSkill } from './skills/builtin/clear.js';
 import { MemoryManager, createRememberSkill, createRecallSkill, createForgetSkill } from './skills/builtin/memory.js';
+import { createLangSkill } from './skills/builtin/lang.js';
 import { createImageSkill } from './skills/builtin/image.js';
 import { createWeatherSkill } from './skills/builtin/weather.js';
 import { createTranslateSkill } from './skills/builtin/translate.js';
@@ -74,6 +75,7 @@ async function main() {
   skills.register(createHelpSkill(() => skills.getAll()));
   skills.register(createModelSkill(providers));
   skills.register(createClearSkill(providers));
+  skills.register(createLangSkill(memoryManager));
   skills.register(createImageSkill());
   skills.register(createWeatherSkill());
   skills.register(createTranslateSkill(providers));
