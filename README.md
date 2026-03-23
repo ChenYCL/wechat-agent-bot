@@ -6,14 +6,16 @@
 
 ## Features
 
-- **多模型支持** — OpenAI / Anthropic / 任意 OpenAI 兼容 API（支持中转 baseURL）
-- **Stream 模式** — 默认开启，加速首 token 响应
-- **WebUI 控制台** — 浏览器管理模型、定时任务、MCP 服务器
-- **持久化会话** — 对话历史存磁盘，重启不丢失（7 天 TTL）
-- **记忆系统** — `/remember` `/recall` `/forget`，类似 Claude Memory
-- **定时任务** — Cron 驱动，定时发送研报、日报等
-- **MCP 工具集成** — 接入任意 MCP 服务器扩展能力
-- **Skill 扩展** — 斜杠命令系统，可自定义
+- **多模型支持** — OpenAI / Anthropic / Claude Code (本地session) / Kimi / GLM / MiniMax 等
+- **中转代理** — 每个模型可配独立 baseURL，兼容任意 OpenAI 格式 API
+- **Claude Code 集成** — 复用本地 Claude Code 订阅，不需要 API Key
+- **Stream 模式** — 默认开启，加速响应
+- **WebUI 控制台** — 浏览器管理模型、技能、定时任务、MCP 服务器
+- **10 个内置技能** — 图片搜索、天气、翻译、摘要、记忆系统等
+- **持久化** — 对话历史 + 用户记忆存磁盘，重启不丢失
+- **定时任务** — Cron 驱动，定时发送研报等
+- **MCP 工具集成** — 搜索 MCP 注册表一键安装
+- **第三方扩展** — 支持从 npm / GitHub / 本地目录加载自定义 Skill
 - **一键安装** — `./setup.sh` 自动装 Node.js、Python、所有依赖
 
 ## Quick Start
@@ -70,6 +72,11 @@ WebUI & API server running at http://localhost:3210
 | `/model list` | 列出所有模型 |
 | `/model <id>` | 切换模型 |
 | `/clear` | 清空当前对话历史 |
+| `/image <关键词>` | 搜索图片并发送到微信 |
+| `/image url <https://...>` | 下载图片并发送 |
+| `/weather <城市>` | 查天气（免费 API，无需 Key） |
+| `/translate <语言> <文本>` | 翻译（调用当前 AI） |
+| `/summary <URL 或文本>` | 网页/文本摘要 |
 | `/remember <key> <内容>` | 保存记忆 |
 | `/recall [key]` | 查看记忆 |
 | `/forget <key>` | 删除记忆 |
@@ -86,14 +93,17 @@ wechat-agent-bot/
 │   │   ├── router.ts         # 消息路由（skill → provider）
 │   │   └── dry-run.ts        # Dry-run 测试模式
 │   ├── providers/
-│   │   ├── base.ts           # Provider 基类（含会话历史）
-│   │   ├── openai.ts         # OpenAI 兼容（支持 stream + baseURL 中转）
-│   │   ├── anthropic.ts      # Anthropic Claude（支持 stream）
+│   │   ├── base.ts           # Provider 基类（持久化历史）
+│   │   ├── openai.ts         # OpenAI 兼容（stream + baseURL 中转）
+│   │   ├── anthropic.ts      # Anthropic Claude（stream）
+│   │   ├── claude-code.ts    # Claude Code 本地 session（复用订阅）
 │   │   └── registry.ts       # Provider 注册中心
 │   ├── scheduler/            # Cron 定时任务
 │   ├── mcp/                  # MCP 协议客户端
-│   ├── skills/               # 斜杠命令系统
-│   │   └── builtin/          # 内置: help, model, clear, remember, recall, forget
+│   ├── skills/
+│   │   ├── registry.ts       # Skill 注册中心
+│   │   ├── loader.ts         # 第三方 Skill 加载器（npm/GitHub/本地）
+│   │   └── builtin/          # 10 个内置 Skill
 │   ├── config/               # JSON 配置持久化
 │   ├── server/               # Express API + WebUI 静态文件
 │   └── utils/
@@ -108,21 +118,52 @@ wechat-agent-bot/
 
 ## Configuration
 
-### 多模型配置（data/config.json）
+### 三种使用模式
+
+**模式一：第三方 API Key（推荐独立部署）**
+```env
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o
+```
+
+**模式二：Claude Code 本地 Session（需要安装 Claude Code CLI）**
+```json
+{
+  "id": "claude-local",
+  "provider": "claude-code",
+  "model": "sonnet",
+  "apiKey": "local"
+}
+```
+复用你的 Claude Code 订阅（Max/Pro/Team），不需要 API Key。
+
+**模式三：国产模型（Kimi / GLM / MiniMax）**
+```json
+{
+  "id": "kimi",
+  "provider": "openai",
+  "model": "moonshot-v1-8k",
+  "apiKey": "your-kimi-key",
+  "baseUrl": "https://api.moonshot.cn/v1"
+}
+```
+所有兼容 OpenAI 格式的 API 都走 `openai` provider + 自定义 `baseUrl`。
+
+### 多模型配置示例（data/config.json）
 
 ```json
 {
   "models": [
     {
-      "id": "gpt-5.4",
-      "name": "GPT-5.4",
+      "id": "gpt-4o",
+      "name": "GPT-4o",
       "provider": "openai",
-      "model": "gpt-5.4",
+      "model": "gpt-4o",
       "apiKey": "sk-xxx",
-      "baseUrl": "https://api.zyai.online/v1",
+      "baseUrl": "https://api.openai.com/v1",
       "stream": true,
       "maxHistory": 50,
-      "temperature": 0.7,
       "systemPrompt": "You are a helpful assistant."
     },
     {
@@ -131,6 +172,13 @@ wechat-agent-bot/
       "provider": "anthropic",
       "model": "claude-sonnet-4-20250514",
       "apiKey": "sk-ant-xxx"
+    },
+    {
+      "id": "claude-local",
+      "name": "Claude Code (Local)",
+      "provider": "claude-code",
+      "model": "sonnet",
+      "apiKey": "local"
     }
   ]
 }
