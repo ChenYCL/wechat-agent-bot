@@ -1,8 +1,61 @@
 diff --git a/node_modules/weixin-agent-sdk/dist/index.mjs b/node_modules/weixin-agent-sdk/dist/index.mjs
-index c935fa4..d27fe9f 100644
+index c935fa4..b79b925 100644
 --- a/node_modules/weixin-agent-sdk/dist/index.mjs
 +++ b/node_modules/weixin-agent-sdk/dist/index.mjs
-@@ -1107,18 +1107,13 @@ function generateClientId() {
+@@ -1060,17 +1060,51 @@ async function uploadFileAttachmentToWeixin(params) {
+ * reads it back when the agent sends a reply.
+ */
+ const contextTokenStore = /* @__PURE__ */ new Map();
++let _contextTokenStoreLoaded = false;
++function _contextTokenStorePath() {
++	return path.join(resolveWeixinStateDir(), "context-tokens.json");
++}
++function _loadContextTokenStore() {
++	if (_contextTokenStoreLoaded) return;
++	_contextTokenStoreLoaded = true;
++	try {
++		const p = _contextTokenStorePath();
++		if (!fs.existsSync(p)) return;
++		const data = JSON.parse(fs.readFileSync(p, "utf-8"));
++		if (data && typeof data === "object") {
++			for (const [k, v] of Object.entries(data)) {
++				if (typeof v === "string") contextTokenStore.set(k, v);
++			}
++			logger.debug(`contextTokenStore: loaded ${contextTokenStore.size} entries from disk`);
++		}
++	} catch (err) {
++		logger.warn(`contextTokenStore: failed to load from disk: ${String(err)}`);
++	}
++}
++function _persistContextTokenStore() {
++	try {
++		const dir = resolveWeixinStateDir();
++		fs.mkdirSync(dir, { recursive: true });
++		const obj = Object.fromEntries(contextTokenStore);
++		fs.writeFileSync(_contextTokenStorePath(), JSON.stringify(obj));
++	} catch (err) {
++		logger.warn(`contextTokenStore: failed to persist: ${String(err)}`);
++	}
++}
+ function contextTokenKey(accountId, userId) {
+ 	return `${accountId}:${userId}`;
+ }
+-/** Store a context token for a given account+user pair. */
++/** Store a context token for a given account+user pair (persisted to disk). */
+ function setContextToken(accountId, userId, token) {
++	_loadContextTokenStore();
+ 	const k = contextTokenKey(accountId, userId);
+ 	logger.debug(`setContextToken: key=${k}`);
+ 	contextTokenStore.set(k, token);
++	_persistContextTokenStore();
+ }
+ /** Retrieve the cached context token for a given account+user pair. */
+ function getContextToken(accountId, userId) {
++	_loadContextTokenStore();
+ 	const k = contextTokenKey(accountId, userId);
+ 	const val = contextTokenStore.get(k);
+ 	logger.debug(`getContextToken: key=${k} found=${val !== void 0} storeSize=${contextTokenStore.size}`);
+@@ -1107,18 +1141,13 @@ function generateClientId() {
  	return generateId("openclaw-weixin");
  }
  /**
