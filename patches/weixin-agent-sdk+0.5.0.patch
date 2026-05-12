@@ -1,0 +1,28 @@
+diff --git a/node_modules/weixin-agent-sdk/dist/index.mjs b/node_modules/weixin-agent-sdk/dist/index.mjs
+index c935fa4..d27fe9f 100644
+--- a/node_modules/weixin-agent-sdk/dist/index.mjs
++++ b/node_modules/weixin-agent-sdk/dist/index.mjs
+@@ -1107,18 +1107,13 @@ function generateClientId() {
+ 	return generateId("openclaw-weixin");
+ }
+ /**
+-* Convert markdown-formatted model reply to plain text for Weixin delivery.
+-* Preserves newlines; strips markdown syntax.
++* Identity passthrough — WeChat client now renders markdown natively
++* (post-OpenClaw integration), so we preserve the original formatting
++* instead of stripping it. Patched via patch-package; original
++* implementation removed.
+ */
+ function markdownToPlainText(text) {
+-	let result = text;
+-	result = result.replace(/```[^\n]*\n?([\s\S]*?)```/g, (_, code) => code.trim());
+-	result = result.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
+-	result = result.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
+-	result = result.replace(/^\|[\s:|-]+\|$/gm, "");
+-	result = result.replace(/^\|(.+)\|$/gm, (_, inner) => inner.split("|").map((cell) => cell.trim()).join("  "));
+-	result = result.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/__(.+?)__/g, "$1").replace(/_(.+?)_/g, "$1").replace(/~~(.+?)~~/g, "$1").replace(/`(.+?)`/g, "$1");
+-	return result;
++	return text;
+ }
+ /** Build a SendMessageReq containing a single text message. */
+ function buildTextMessageReq(params) {

@@ -24,7 +24,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "webui:dev": "cd webui && npm run dev",
-    "lint": "eslint src/ --ext .ts"
+    "lint": "eslint src/ --ext .ts",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -48,6 +49,7 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
+    "patch-package": "^8.0.1",
     "tsup": "^8.4.0",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
