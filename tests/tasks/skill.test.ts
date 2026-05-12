@@ -11,9 +11,10 @@ import { SchedulerManager } from '../../src/scheduler/manager.js';
 import { UserTaskManager } from '../../src/tasks/manager.js';
 import { createTaskSkill } from '../../src/skills/builtin/task.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
+import { fromRegistry } from '../../src/skills/provider-access.js';
 import type { ChatRequest, ChatResponse } from '../../src/core/types.js';
 
-function stubProvider(reply: string): ProviderRegistry {
+function stubProvider(reply: string) {
   const r = new ProviderRegistry();
   r.registerFactory('stub', (cfg) => ({
     id: cfg.id, name: cfg.name, config: cfg,
@@ -21,7 +22,7 @@ function stubProvider(reply: string): ProviderRegistry {
     async clearSession() {},
   }));
   r.addProvider({ id: 's', name: 's', provider: 'stub', model: 'm', apiKey: 'k' });
-  return r;
+  return fromRegistry(r);
 }
 
 describe('/task skill', () => {

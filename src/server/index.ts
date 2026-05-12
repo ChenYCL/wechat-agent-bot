@@ -11,12 +11,20 @@ import { createMcpRoutes } from './routes/mcp.js';
 import { createStatusRoutes } from './routes/status.js';
 import { createSkillRoutes } from './routes/skills.js';
 import { createUserTaskRoutes } from './routes/user-tasks.js';
+import { createAuthRoutes } from './routes/auth.js';
+import { createWeChatAccountRoutes } from './routes/wechat-accounts.js';
+import { createUserModelRoutes } from './routes/user-models.js';
 import type { ConfigStore } from '../config/store.js';
 import type { ProviderRegistry } from '../providers/registry.js';
 import type { SchedulerManager } from '../scheduler/manager.js';
 import type { McpClient } from '../mcp/client.js';
 import type { SkillRegistry } from '../skills/registry.js';
 import type { UserTaskManager } from '../tasks/manager.js';
+import type { AuthStore } from '../auth/store.js';
+import type { WeChatAccountStore } from '../accounts/store.js';
+import type { MultiAccountBot } from '../accounts/multi-bot.js';
+import type { UserProviderManager } from '../accounts/provider-manager.js';
+import { attachUser } from '../auth/middleware.js';
 import { logger } from '../utils/logger.js';
 
 export interface ServerDeps {
@@ -26,18 +34,25 @@ export interface ServerDeps {
   mcp: McpClient;
   skills: SkillRegistry;
   userTasks?: UserTaskManager;
+  /** Multi-tenant pieces — if present, auth+accounts+per-user-models are enabled. */
+  auth?: AuthStore;
+  wechatAccounts?: WeChatAccountStore;
+  multiBot?: MultiAccountBot;
+  userProviders?: UserProviderManager;
 }
 
-/** Simple token-based auth middleware. Set API_SECRET env var to enable. */
+/** Legacy auth: API_SECRET bearer token. Also passes through when a
+ *  session cookie already resolved a user (via `attachUser`). */
 function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (req.user) return next();              // session cookie path
   const secret = process.env.API_SECRET;
-  if (!secret) return next(); // No secret configured = auth disabled (dev mode)
+  if (!secret) return next();               // dev mode
 
   const token = req.headers.authorization?.replace('Bearer ', '')
     || (req.query as Record<string, string>).token;
   if (token === secret) return next();
 
-  res.status(401).json({ error: 'Unauthorized. Set Authorization: Bearer <API_SECRET> header.' });
+  res.status(401).json({ error: 'Unauthorized. Log in via /api/auth/login or set Authorization: Bearer <API_SECRET>.' });
 }
 
 function buildAllowedOrigins(port: number): string[] {
@@ -70,10 +85,27 @@ export function createServer(deps: ServerDeps) {
     next();
   });
 
-  // Auth on all /api/ routes
+  // Attach req.user from session cookie when auth is configured.
+  if (deps.auth) {
+    app.use(attachUser(deps.auth));
+  }
+
+  // Multi-tenant routes (auth + per-user resources). When the deps are
+  // present these take precedence over the legacy single-tenant routes.
+  if (deps.auth) {
+    app.use('/api/auth', createAuthRoutes(deps.auth));
+  }
+  if (deps.wechatAccounts && deps.multiBot) {
+    app.use('/api/wechat-accounts', createWeChatAccountRoutes(deps.wechatAccounts, deps.multiBot));
+  }
+  if (deps.userProviders) {
+    app.use('/api/me/models', createUserModelRoutes(deps.userProviders));
+  }
+
+  // Legacy bearer-token gate for the original single-tenant routes
   app.use('/api', authMiddleware);
 
-  // API routes
+  // API routes (legacy single-tenant — kept for back-compat / admin use)
   app.use('/api/models', createModelRoutes(deps));
   app.use('/api/tasks', createTaskRoutes(deps));
   app.use('/api/mcp', createMcpRoutes(deps));

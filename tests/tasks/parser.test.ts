@@ -6,9 +6,10 @@
 import { describe, it, expect } from 'vitest';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import { parseTaskFromText } from '../../src/tasks/parser.js';
+import { fromRegistry } from '../../src/skills/provider-access.js';
 import type { ChatRequest, ChatResponse } from '../../src/core/types.js';
 
-function makeProviders(reply: string): ProviderRegistry {
+function makeProviders(reply: string) {
   const r = new ProviderRegistry();
   r.registerFactory('stub', (cfg) => ({
     id: cfg.id, name: cfg.name, config: cfg,
@@ -16,7 +17,7 @@ function makeProviders(reply: string): ProviderRegistry {
     async clearSession() {},
   }));
   r.addProvider({ id: 's', name: 's', provider: 'stub', model: 'm', apiKey: 'k' });
-  return r;
+  return fromRegistry(r);
 }
 
 describe('parseTaskFromText', () => {
@@ -104,7 +105,7 @@ describe('parseTaskFromText', () => {
   });
 
   it('fails fast when no provider configured', async () => {
-    const providers = new ProviderRegistry();
+    const providers = fromRegistry(new ProviderRegistry());
     const res = await parseTaskFromText('X', { providers, ownerConversationId: 'c1' });
     expect(res.ok).toBe(false);
     expect(res.error).toContain('No active AI provider');

@@ -5,6 +5,8 @@
  */
 import type { Agent, ChatRequest, ChatResponse } from './types.js';
 import { ProviderRegistry } from '../providers/registry.js';
+import type { ProviderAccess } from '../skills/provider-access.js';
+import { fromRegistry } from '../skills/provider-access.js';
 import { SkillRegistry } from '../skills/registry.js';
 import type { MemoryManager } from '../skills/builtin/memory.js';
 import type { HistoryStore } from '../utils/history-store.js';
@@ -14,18 +16,18 @@ import { logger } from '../utils/logger.js';
 const LANG_PROMPTED_KEY = '_lang_prompted';
 
 export class MessageRouter implements Agent {
-  private providerRegistry: ProviderRegistry;
+  private providers: ProviderAccess;
   private skillRegistry: SkillRegistry;
   private memoryManager: MemoryManager | null;
   private outbox: HistoryStore | null;
 
   constructor(
-    providerRegistry: ProviderRegistry,
+    providers: ProviderRegistry | ProviderAccess,
     skillRegistry: SkillRegistry,
     memoryManager?: MemoryManager,
     outbox?: HistoryStore,
   ) {
-    this.providerRegistry = providerRegistry;
+    this.providers = providers instanceof ProviderRegistry ? fromRegistry(providers) : providers;
     this.skillRegistry = skillRegistry;
     this.memoryManager = memoryManager ?? null;
     this.outbox = outbox ?? null;
@@ -81,7 +83,7 @@ export class MessageRouter implements Agent {
   }
 
   private async routeToProvider(request: ChatRequest): Promise<ChatResponse> {
-    const provider = this.providerRegistry.getActive();
+    const provider = this.providers.getActive(request.conversationId);
     if (!provider) {
       return { text: '⚠️ 未配置 AI 模型\n\n请通过 WebUI 配置模型，或发送 /model list 查看。' };
     }
@@ -127,7 +129,7 @@ export class MessageRouter implements Agent {
   }
 
   async clearSession(conversationId: string): Promise<void> {
-    const provider = this.providerRegistry.getActive();
+    const provider = this.providers.getActive(conversationId);
     if (provider?.clearSession) {
       await provider.clearSession(conversationId);
     }

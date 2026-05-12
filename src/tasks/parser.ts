@@ -12,7 +12,7 @@
  *      surfaces as a useful error to the user instead of crashing.
  */
 import { z } from 'zod';
-import type { ProviderRegistry } from '../providers/registry.js';
+import type { ProviderAccess } from '../skills/provider-access.js';
 import type { UserTaskDraft, TaskType } from './types.js';
 import { logger } from '../utils/logger.js';
 
@@ -53,7 +53,7 @@ const DraftSchema = z.union([ReminderSchema, WatchSchema]);
 const ErrorSchema = z.object({ error: z.string() });
 
 export interface ParseTaskOptions {
-  providers: ProviderRegistry;
+  providers: ProviderAccess;
   ownerConversationId: string;
   /** Optional language preference (e.g. "中文", "English"). Steers `description` / `message` wording. */
   language?: string | null;
@@ -69,7 +69,7 @@ export interface ParseResult {
 }
 
 export async function parseTaskFromText(input: string, opts: ParseTaskOptions): Promise<ParseResult> {
-  const provider = opts.providers.getActive();
+  const provider = opts.providers.getActive(opts.ownerConversationId);
   if (!provider) return { ok: false, error: 'No active AI provider configured' };
 
   const now = opts.now ?? new Date();

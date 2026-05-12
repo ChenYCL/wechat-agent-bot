@@ -14,7 +14,7 @@
  */
 import type { Skill } from '../registry.js';
 import type { ChatRequest, ChatResponse } from '../../core/types.js';
-import type { ProviderRegistry } from '../../providers/registry.js';
+import type { ProviderAccess } from '../provider-access.js';
 import type { UserTaskManager } from '../../tasks/manager.js';
 import type { MemoryManager } from './memory.js';
 import { getLangPreference } from './lang.js';
@@ -28,7 +28,7 @@ function fmtTime(ms: number): string {
 
 export interface TaskSkillDeps {
   manager: UserTaskManager;
-  providers: ProviderRegistry;
+  providers: ProviderAccess;
   memory?: MemoryManager;
 }
 

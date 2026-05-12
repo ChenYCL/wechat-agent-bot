@@ -3,14 +3,14 @@
  */
 import type { Skill } from '../registry.js';
 import type { ChatRequest, ChatResponse } from '../../core/types.js';
-import type { ProviderRegistry } from '../../providers/registry.js';
+import type { ProviderAccess } from '../provider-access.js';
 
-export function createClearSkill(registry: ProviderRegistry): Skill {
+export function createClearSkill(access: ProviderAccess): Skill {
   return {
     name: 'clear',
     description: 'Clear conversation history',
     async execute(request: ChatRequest): Promise<ChatResponse> {
-      const provider = registry.getActive();
+      const provider = access.getActive(request.conversationId);
       if (provider?.clearSession) {
         await provider.clearSession(request.conversationId);
       }

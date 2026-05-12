@@ -89,8 +89,74 @@ export class HistoryStore {
         observed_at INTEGER NOT NULL DEFAULT (unixepoch())
       );
       CREATE INDEX IF NOT EXISTS idx_obs_task ON watch_observations(task_id, id DESC);
+
+      -- ── Multi-tenant tables (added in the multi-user refactor) ──
+
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        password_salt TEXT NOT NULL,
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+
+      CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        expires_at INTEGER NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+      CREATE TABLE IF NOT EXISTS wechat_accounts (
+        account_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        alias TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        last_seen_at INTEGER,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_wechat_accounts_user ON wechat_accounts(user_id);
+
+      CREATE TABLE IF NOT EXISTS user_models (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        api_key TEXT NOT NULL,
+        base_url TEXT,
+        system_prompt TEXT,
+        max_history INTEGER,
+        temperature REAL,
+        max_tokens INTEGER,
+        stream INTEGER,
+        extra TEXT,
+        is_active INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_models_user ON user_models(user_id);
     `);
+
+    // Schema upgrades for pre-multi-tenant DBs
+    this.ensureColumn('user_tasks', 'owner_user_id', 'TEXT');
     logger.info(`SQLite database initialized: ${this.db.name}`);
+  }
+
+  /** ALTER TABLE ADD COLUMN if it isn't already present. Used for in-place upgrades. */
+  private ensureColumn(table: string, column: string, decl: string): void {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (cols.some((c) => c.name === column)) return;
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+  }
+
+  /** Expose raw DB for adapter classes (AuthStore, AccountStore, etc.). */
+  get rawDb(): Database.Database {
+    return this.db;
   }
 
   async get(conversationId: string): Promise<HistoryMessage[]> {

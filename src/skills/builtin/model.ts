@@ -3,9 +3,9 @@
  */
 import type { Skill } from '../registry.js';
 import type { ChatRequest, ChatResponse } from '../../core/types.js';
-import type { ProviderRegistry } from '../../providers/registry.js';
+import type { ProviderAccess } from '../provider-access.js';
 
-export function createModelSkill(registry: ProviderRegistry): Skill {
+export function createModelSkill(access: ProviderAccess): Skill {
   return {
     name: 'model',
     description: 'Switch AI model. Usage: /model [id] or /model list',
@@ -13,24 +13,23 @@ export function createModelSkill(registry: ProviderRegistry): Skill {
       const arg = request.text?.trim();
 
       if (!arg || arg === 'list') {
-        const providers = registry.getAll();
-        const active = registry.getActive();
-        const lines = providers.map((p) => {
-          const isActive = p.id === active?.id;
-          const icon = isActive ? '▶️' : '  ';
-          const tag = isActive ? ' ✅' : '';
-          return `${icon} ${p.id}\n   ${p.name} (${p.config.model})${tag}`;
+        const list = access.list(request.conversationId);
+        if (list.length === 0) {
+          return { text: '⚠️ 你还没有任何模型\n\n请在 WebUI 中添加（OpenAI / Anthropic / 国内大模型 API）' };
+        }
+        const lines = list.map((p) => {
+          const icon = p.active ? '▶️' : '  ';
+          const tag = p.active ? ' ✅' : '';
+          return `${icon} ${p.id}\n   ${p.name} (${p.model})${tag}`;
         });
         return { text: `━━ 可用模型 ━━\n\n${lines.join('\n\n')}\n\n💡 发送 /model <id> 切换` };
       }
 
-      try {
-        registry.setActive(arg);
-        const p = registry.getActive()!;
-        return { text: `✅ 已切换到: ${p.name}\n📌 模型: ${p.config.model}` };
-      } catch (err) {
-        return { text: `⚠️ 切换失败: ${(err as Error).message}\n💡 发送 /model list 查看可用模型` };
+      const result = access.setActive(request.conversationId, arg);
+      if (!result.ok || !result.provider) {
+        return { text: `⚠️ 切换失败: ${result.error ?? 'unknown'}\n💡 发送 /model list 查看可用模型` };
       }
+      return { text: `✅ 已切换到: ${result.provider.name}\n📌 模型: ${result.provider.config.model}` };
     },
   };
 }

@@ -5,9 +5,9 @@
  */
 import type { Skill } from '../registry.js';
 import type { ChatRequest, ChatResponse } from '../../core/types.js';
-import type { ProviderRegistry } from '../../providers/registry.js';
+import type { ProviderAccess } from '../provider-access.js';
 
-export function createTranslateSkill(providers: ProviderRegistry): Skill {
+export function createTranslateSkill(access: ProviderAccess): Skill {
   return {
     name: 'translate',
     description: 'Translate text. Usage: /translate <lang> <text>',
@@ -21,7 +21,7 @@ export function createTranslateSkill(providers: ProviderRegistry): Skill {
       const targetLang = text.slice(0, spaceIdx);
       const sourceText = text.slice(spaceIdx + 1).trim();
 
-      const provider = providers.getActive();
+      const provider = access.getActive(request.conversationId);
       if (!provider) return { text: '⚠️ No active AI provider' };
 
       try {

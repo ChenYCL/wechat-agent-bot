@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getStatus, testMessage, getSkills, deleteSkill, installSkillNpm, installSkillGithub, loadSkillsDir } from '../lib/api';
+import { getStatus, testMessage, deleteSkill, installSkillNpm, installSkillGithub, loadSkillsDir } from '../lib/api';
 import { Terminal, Brain, MessageSquare, RefreshCw, Send, Loader2, Trash2, Download, Github, Package, FolderOpen } from 'lucide-react';
 
 export default function SkillsPage() {

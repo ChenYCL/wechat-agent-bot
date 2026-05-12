@@ -13,6 +13,7 @@ import { DryRunBot } from './core/dry-run.js';
 import { createHelpSkill } from './skills/builtin/help.js';
 import { createModelSkill } from './skills/builtin/model.js';
 import { createClearSkill } from './skills/builtin/clear.js';
+import { fromRegistry } from './skills/provider-access.js';
 import { logger } from './utils/logger.js';
 
 async function main() {
@@ -31,9 +32,10 @@ async function main() {
   }
 
   const skills = new SkillRegistry();
+  const access = fromRegistry(providers);
   skills.register(createHelpSkill(() => skills.getAll()));
-  skills.register(createModelSkill(providers));
-  skills.register(createClearSkill(providers));
+  skills.register(createModelSkill(access));
+  skills.register(createClearSkill(access));
 
   const router = new MessageRouter(providers, skills);
   const bot = new DryRunBot(router);

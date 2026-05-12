@@ -16,6 +16,7 @@ import { Router } from 'express';
 import type { ServerDeps } from '../index.js';
 import type { UserTaskManager } from '../../tasks/manager.js';
 import { parseTaskFromText } from '../../tasks/parser.js';
+import { fromRegistry } from '../../skills/provider-access.js';
 
 export interface UserTaskRoutesDeps extends ServerDeps {
   userTasks: UserTaskManager;
@@ -53,7 +54,7 @@ export function createUserTaskRoutes(deps: UserTaskRoutesDeps) {
       return res.status(400).json({ error: 'text and ownerConversationId are required' });
     }
     const result = await parseTaskFromText(text, {
-      providers: deps.providers,
+      providers: fromRegistry(deps.providers),
       ownerConversationId,
       language,
     });

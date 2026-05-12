@@ -14,6 +14,7 @@ import { SkillRegistry } from '../../src/skills/registry.js';
 import { createHelpSkill } from '../../src/skills/builtin/help.js';
 import { createModelSkill } from '../../src/skills/builtin/model.js';
 import { createClearSkill } from '../../src/skills/builtin/clear.js';
+import { fromRegistry } from '../../src/skills/provider-access.js';
 import type { ChatRequest, ChatResponse } from '../../src/core/types.js';
 
 describe('E2E Pipeline', () => {
@@ -53,9 +54,10 @@ describe('E2E Pipeline', () => {
     });
 
     // Register skills
+    const access = fromRegistry(providers);
     skills.register(createHelpSkill(() => skills.getAll()));
-    skills.register(createModelSkill(providers));
-    skills.register(createClearSkill(providers));
+    skills.register(createModelSkill(access));
+    skills.register(createClearSkill(access));
 
     const router = new MessageRouter(providers, skills);
     bot = new DryRunBot(router);

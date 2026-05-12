@@ -5,9 +5,9 @@
  */
 import type { Skill } from '../registry.js';
 import type { ChatRequest, ChatResponse } from '../../core/types.js';
-import type { ProviderRegistry } from '../../providers/registry.js';
+import type { ProviderAccess } from '../provider-access.js';
 
-export function createSummarySkill(providers: ProviderRegistry): Skill {
+export function createSummarySkill(access: ProviderAccess): Skill {
   return {
     name: 'summary',
     description: 'Summarize a URL or text. Usage: /summary <url or text>',
@@ -15,7 +15,7 @@ export function createSummarySkill(providers: ProviderRegistry): Skill {
       const text = request.text?.trim() || '';
       if (!text) return { text: 'Usage: /summary <URL or text>' };
 
-      const provider = providers.getActive();
+      const provider = access.getActive(request.conversationId);
       if (!provider) return { text: '⚠️ No active AI provider' };
 
       let content = text;
@@ -29,7 +29,6 @@ export function createSummarySkill(providers: ProviderRegistry): Skill {
           });
           if (res.ok) {
             const html = await res.text();
-            // Basic HTML to text
             content = html
               .replace(/<script[\s\S]*?<\/script>/gi, '')
               .replace(/<style[\s\S]*?<\/style>/gi, '')

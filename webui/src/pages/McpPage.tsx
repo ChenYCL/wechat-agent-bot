@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getMcp, addMcpServer, deleteMcpServer, searchMcpServers } from '../lib/api';
-import { Plus, Trash2, Plug, Search, Loader2, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Plug, Search, Loader2 } from 'lucide-react';
 
 interface McpForm {
   name: string;

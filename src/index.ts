@@ -1,8 +1,14 @@
 /**
  * WeChat Agent Bot - Main Entry Point
  *
- * Bootstraps all modules: config, providers, scheduler, MCP, skills,
- * API server, and the WeChat bot message loop.
+ * Multi-tenant: each app user owns their own WeChat accounts, model
+ * configs and tasks. A single Node process runs N WeChat long-polls,
+ * one per active account. All storage is in `data/bot.db`, with rows
+ * scoped by `accountId::rawConversationId` so accounts don't cross-talk.
+ *
+ * On first boot we create an `admin` user (random password printed once,
+ * or `ADMIN_USERNAME`/`ADMIN_PASSWORD` env) and migrate any models in
+ * `config.json` into that admin's account.
  */
 import 'dotenv/config';
 import { ConfigStore } from './config/store.js';
@@ -15,7 +21,6 @@ import { createUserTaskToolBridge } from './tasks/tool-bridge.js';
 import { SkillRegistry } from './skills/registry.js';
 import { loadSkillsFromDir } from './skills/loader.js';
 import { MessageRouter } from './core/router.js';
-import { WeChatBot } from './core/bot.js';
 import { startServer } from './server/index.js';
 import { createHelpSkill } from './skills/builtin/help.js';
 import { createModelSkill } from './skills/builtin/model.js';
@@ -26,48 +31,64 @@ import { createImageSkill } from './skills/builtin/image.js';
 import { createWeatherSkill } from './skills/builtin/weather.js';
 import { createTranslateSkill } from './skills/builtin/translate.js';
 import { createSummarySkill } from './skills/builtin/summary.js';
+import { createTaskSkill } from './skills/builtin/task.js';
 import { createReportHandler } from './scheduler/tasks/report.js';
 import { UserTaskManager } from './tasks/manager.js';
-import { createTaskSkill } from './skills/builtin/task.js';
+import { fromUserProviders } from './skills/provider-access.js';
 import { HistoryStore } from './utils/history-store.js';
+import { AuthStore } from './auth/store.js';
+import { WeChatAccountStore } from './accounts/store.js';
+import { UserProviderManager } from './accounts/provider-manager.js';
+import { ContextResolver } from './accounts/context.js';
+import { MultiAccountBot } from './accounts/multi-bot.js';
+import { bootstrapAdminIfNeeded } from './boot/migrate.js';
 import { logger } from './utils/logger.js';
 import { join } from 'node:path';
 
 async function main() {
   logger.info('WeChat Agent Bot starting...');
 
-  // 1. Load config
+  // 1. Load config (server port, MCP servers, scheduled tasks)
   const config = new ConfigStore();
   const appConfig = await config.load();
 
-  // 2. Initialize persistent history store
+  // 2. Persistent SQLite store (history, memories, outbox, users, accounts, models, tasks)
   const dataDir = join(process.cwd(), 'data');
   const historyStore = new HistoryStore(dataDir);
   await historyStore.init();
   logger.info('SQLite database initialized (data/bot.db)');
 
-  // 3. Initialize provider registry
-  const providers = new ProviderRegistry();
-  providers.setHistoryStore(historyStore);
-  for (const modelConfig of appConfig.models) {
-    try {
-      providers.addProvider(modelConfig);
-    } catch (err) {
-      logger.error(`Failed to register provider ${modelConfig.id}: ${(err as Error).message}`);
-    }
-  }
+  // 3. Auth + multi-tenant stores
+  const auth = new AuthStore(historyStore);
+  const accountsStore = new WeChatAccountStore(historyStore);
+  const userProviders = new UserProviderManager(historyStore);
+  bootstrapAdminIfNeeded(auth, userProviders, appConfig);
 
-  // 4. Initialize scheduler (timezone-aware, with run telemetry)
+  // 4. Memory manager (conversation-keyed; works for both single & multi-tenant)
+  const memoryManager = new MemoryManager(historyStore);
+  await memoryManager.init();
+  logger.info('Memory manager initialized');
+
+  // 5. Scheduler (timezone-aware + telemetry)
   const scheduler = new SchedulerManager({ store: historyStore });
+  // The legacy `report` task expects a single global provider — wire it to
+  // the admin's active model so server-wide scheduled reports still work.
   scheduler.registerHandler(
     'report',
     createReportHandler({
-      getProvider: () => providers.getActive(),
+      getProvider: () => {
+        const adminId = firstAdminId(auth);
+        return adminId ? userProviders.getActive(adminId) : null;
+      },
       outbox: historyStore,
     }),
   );
 
-  // 5. Initialize MCP and wire it as the provider tool bridge
+  // 6. User-task manager (per-conversation reminders & watches)
+  const userTaskManager = new UserTaskManager({ store: historyStore, scheduler });
+  userTaskManager.loadAll();
+
+  // 7. MCP client + composite tool bridge wired into user providers
   const mcp = new McpClient();
   for (const serverConfig of appConfig.mcpServers) {
     try {
@@ -76,36 +97,27 @@ async function main() {
       logger.error(`Failed to connect MCP server ${serverConfig.name}: ${(err as Error).message}`);
     }
   }
-  // 6. Initialize memory manager (shares SQLite DB with history store)
-  const memoryManager = new MemoryManager(historyStore);
-  await memoryManager.init();
-  logger.info('Memory manager initialized (SQLite, permanent)');
-
-  // 7. Initialize user-task manager (NL-driven reminders & watches)
-  const userTaskManager = new UserTaskManager({ store: historyStore, scheduler });
-  userTaskManager.loadAll();
-
-  // Wire the composite tool bridge: MCP tools + user-task tools.
-  // Providers can now invoke task creation/listing during normal chat.
-  providers.setToolBridge(composeToolBridges(
+  userProviders.setToolBridge(composeToolBridges(
     createMcpToolBridge(mcp),
     createUserTaskToolBridge(userTaskManager),
   ));
 
-  // 8. Initialize skills (builtin + auto-loaded from data/skills/)
+  // 8. Skill registry (built-in + user-loaded)
+  const contextResolver = new ContextResolver(accountsStore);
+  const providerAccess = fromUserProviders(userProviders, contextResolver);
   const skills = new SkillRegistry();
   skills.register(createHelpSkill(() => skills.getAll()));
-  skills.register(createModelSkill(providers));
-  skills.register(createClearSkill(providers));
+  skills.register(createModelSkill(providerAccess));
+  skills.register(createClearSkill(providerAccess));
   skills.register(createLangSkill(memoryManager));
   skills.register(createImageSkill());
   skills.register(createWeatherSkill());
-  skills.register(createTranslateSkill(providers));
-  skills.register(createSummarySkill(providers));
+  skills.register(createTranslateSkill(providerAccess));
+  skills.register(createSummarySkill(providerAccess));
   skills.register(createRememberSkill(memoryManager));
   skills.register(createRecallSkill(memoryManager));
   skills.register(createForgetSkill(memoryManager));
-  skills.register(createTaskSkill({ manager: userTaskManager, providers, memory: memoryManager }));
+  skills.register(createTaskSkill({ manager: userTaskManager, providers: providerAccess, memory: memoryManager }));
 
   try {
     const userSkills = await loadSkillsFromDir(join(dataDir, 'skills'));
@@ -124,17 +136,38 @@ async function main() {
     scheduler.schedule(task);
   }
 
-  // 10. Start API server (WebUI)
-  await startServer({ config, providers, scheduler, mcp, skills, userTasks: userTaskManager });
+  // 10. Build the router (per-user model resolution) and the multi-account bot
+  const router = new MessageRouter(providerAccess, skills, memoryManager, historyStore);
+  const multiBot = new MultiAccountBot(router, accountsStore);
 
-  // 11. Start WeChat bot (with outbox flushing in the router)
-  const router = new MessageRouter(providers, skills, memoryManager, historyStore);
-  const bot = new WeChatBot(router);
+  // 11. Start the HTTP/WebUI server (auth + multi-tenant + legacy routes)
+  // Pass a dummy legacy ProviderRegistry — required by old single-tenant
+  // /api/models routes; safe to leave empty when no admin tokens use them.
+  const legacyRegistry = new ProviderRegistry();
+  legacyRegistry.setHistoryStore(historyStore);
+  await startServer({
+    config,
+    providers: legacyRegistry,
+    scheduler,
+    mcp,
+    skills,
+    userTasks: userTaskManager,
+    auth,
+    wechatAccounts: accountsStore,
+    multiBot,
+    userProviders,
+  });
+
+  // 12. Boot one bot loop per active WeChat account
+  await multiBot.startAll();
+  if (multiBot.listRunning().length === 0) {
+    logger.info('No WeChat accounts linked yet. Open the WebUI to scan a QR code.');
+  }
 
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down...');
-    bot.stop();
+    await multiBot.stopAll();
     scheduler.cancelAll();
     await historyStore.close();
     await mcp.disconnectAll();
@@ -142,14 +175,11 @@ async function main() {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+}
 
-  try {
-    await bot.login();
-    await bot.start();
-  } catch (err) {
-    logger.error(`Bot failed: ${(err as Error).message}`);
-    shutdown();
-  }
+function firstAdminId(auth: AuthStore): string | null {
+  const all = auth.listUsers();
+  return all.find((u) => u.isAdmin)?.id ?? all[0]?.id ?? null;
 }
 
 main().catch((err) => {
