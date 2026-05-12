@@ -3,7 +3,7 @@
  * in-process auto-reconnect (exponential backoff) so a transient SDK
  * crash doesn't bring the bot down and force a fresh QR scan.
  */
-import { login, start } from 'weixin-agent-sdk';
+import { login, start, Bot as SdkBot } from 'weixin-agent-sdk';
 import type { Agent as SdkAgent, LoginOptions } from 'weixin-agent-sdk';
 import type { Agent, BotOptions } from './types.js';
 import { logger } from '../utils/logger.js';
@@ -17,10 +17,16 @@ export class WeChatBot {
   private abortController: AbortController;
   private running = false;
   private stopRequested = false;
+  private sdkBot: SdkBot | null = null;
 
   constructor(agent: Agent) {
     this.agent = agent;
     this.abortController = new AbortController();
+  }
+
+  /** Access the SDK Bot instance for proactive sending. */
+  getSdkBot(): SdkBot | null {
+    return this.sdkBot;
   }
 
   async login(options?: LoginOptions): Promise<string> {
@@ -43,15 +49,19 @@ export class WeChatBot {
     let attempt = 0;
     while (!this.stopRequested) {
       try {
-        await start(this.agent as unknown as SdkAgent, {
+        // SDK 0.5+: start() returns a Bot synchronously, bot.wait() resolves
+        // when the long-poll stops.
+        this.sdkBot = start(this.agent as unknown as SdkAgent, {
           accountId: options?.account,
           abortSignal: this.abortController.signal,
           log: options?.onLog,
         });
-        // start() returned normally — fully stopped.
+        await this.sdkBot.wait();
+        this.sdkBot = null;
         logger.info('Bot message loop ended cleanly');
         break;
       } catch (err) {
+        this.sdkBot = null;
         const e = err as Error;
         if (e.name === 'AbortError' || this.stopRequested) {
           logger.info('Bot stopped gracefully');

@@ -1,21 +1,21 @@
 /**
  * Multi-account bot manager.
  *
- * Spawns one `start()` long-poll per active WeChat account. Each loop
- * wraps the shared MessageRouter in a `PerAccountAgent` that prefixes
- * `conversationId` with the account id, so all downstream state stays
+ * Spawns one WeChat long-poll per account, wraps the shared
+ * MessageRouter in a `PerAccountAgent` that prefixes inbound
+ * conversationIds with the account id so all downstream state stays
  * isolated per (account, peer).
  *
- * Crash/disconnect handling is delegated to the existing per-account
- * loop: each call has its own exponential-backoff reconnect, identical
- * to the original single-account behaviour. The manager itself only
- * tracks which accounts are running and exposes start/stop.
+ * Built on weixin-agent-sdk 0.5+ which returns a `Bot` instance from
+ * `start()` and exposes `Bot.sendMessage(text|response)` for proactive
+ * pushes (uses the context_token cached from the most recent inbound
+ * message; token is good for ~24 hours).
  */
-import { start as sdkStart } from 'weixin-agent-sdk';
+import { start as sdkStart, Bot as SdkBot } from 'weixin-agent-sdk';
 import type { Agent as SdkAgent } from 'weixin-agent-sdk';
 import type { Agent, ChatRequest, ChatResponse } from '../core/types.js';
 import type { WeChatAccountStore } from './store.js';
-import { encodeScopedId } from './context.js';
+import { encodeScopedId, decodeScopedId } from './context.js';
 import { logger } from '../utils/logger.js';
 
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -26,6 +26,7 @@ interface RunningAccount {
   accountId: string;
   abort: AbortController;
   loop: Promise<void>;
+  bot: SdkBot | null;
 }
 
 /** Wraps the shared router so inbound conversation ids are namespaced. */
@@ -61,9 +62,6 @@ export class MultiAccountBot {
   async startAll(): Promise<void> {
     const list = this.accounts.listResumeCandidates();
     for (const a of list) {
-      // Bootable accounts are those previously seen as 'active'. Pending rows
-      // came from a half-completed QR login; we skip those until the user
-      // re-tries.
       if (a.status === 'active') {
         this.startAccount(a.accountId).catch((err) => {
           logger.error(`[multi-bot] account=${a.accountId} failed to start: ${(err as Error).message}`);
@@ -83,8 +81,9 @@ export class MultiAccountBot {
     }
     const abort = new AbortController();
     const agent = new PerAccountAgent(accountId, this.router, this.accounts);
-    const loop = this.runLoop(accountId, agent, abort);
-    this.running.set(accountId, { accountId, abort, loop });
+    const entry: RunningAccount = { accountId, abort, loop: Promise.resolve(), bot: null };
+    this.running.set(accountId, entry);
+    entry.loop = this.runLoop(entry, agent);
     this.accounts.markActive(accountId);
     logger.info(`[multi-bot] account=${accountId} started`);
   }
@@ -110,34 +109,68 @@ export class MultiAccountBot {
     return [...this.running.keys()];
   }
 
-  private async runLoop(accountId: string, agent: Agent, abort: AbortController): Promise<void> {
+  /**
+   * Proactive push, the supported way: looks up the running Bot for the
+   * account encoded in `scopedConversationId` and calls SDK's
+   * `bot.sendMessage()`. Returns true on success, false if the account
+   * isn't running, the conversation id is malformed, or the SDK reports
+   * "no context_token cached" (peer hasn't messaged in ~24h).
+   */
+  async send(scopedConversationId: string, content: { text?: string; media?: ChatResponse['media'] }): Promise<boolean> {
+    if (!content.text && !content.media) return false;
+    const parts = decodeScopedId(scopedConversationId);
+    if (!parts) return false;
+    const entry = this.running.get(parts.accountId);
+    if (!entry?.bot) {
+      logger.warn(`[multi-bot] send: account=${parts.accountId} not running`);
+      return false;
+    }
+    try {
+      const payload: ChatResponse = {};
+      if (content.text) payload.text = content.text;
+      if (content.media) payload.media = content.media;
+      await entry.bot.sendMessage(payload as any);
+      return true;
+    } catch (err) {
+      logger.warn(`[multi-bot] sendMessage failed for ${parts.accountId}: ${(err as Error).message}`);
+      return false;
+    }
+  }
+
+  private async runLoop(entry: RunningAccount, agent: Agent): Promise<void> {
     let attempt = 0;
-    while (!abort.signal.aborted && !this.stopping) {
+    while (!entry.abort.signal.aborted && !this.stopping) {
       try {
-        await sdkStart(agent as unknown as SdkAgent, {
-          accountId,
-          abortSignal: abort.signal,
+        // SDK 0.5+: start() returns a Bot synchronously, bot.wait() resolves
+        // when the long-poll stops (abort or unrecoverable error).
+        const bot = sdkStart(agent as unknown as SdkAgent, {
+          accountId: entry.accountId,
+          abortSignal: entry.abort.signal,
         });
-        logger.info(`[multi-bot] account=${accountId} loop ended cleanly`);
+        entry.bot = bot;
+        await bot.wait();
+        logger.info(`[multi-bot] account=${entry.accountId} loop ended cleanly`);
         break;
       } catch (err) {
         const e = err as Error;
-        if (e.name === 'AbortError' || abort.signal.aborted || this.stopping) {
-          logger.info(`[multi-bot] account=${accountId} aborted`);
+        entry.bot = null;
+        if (e.name === 'AbortError' || entry.abort.signal.aborted || this.stopping) {
+          logger.info(`[multi-bot] account=${entry.accountId} aborted`);
           break;
         }
         attempt++;
         if (attempt >= MAX_RECONNECT_ATTEMPTS) {
-          logger.error(`[multi-bot] account=${accountId} gave up after ${attempt} attempts: ${e.message}`);
-          this.accounts.markLoggedOut(accountId);
+          logger.error(`[multi-bot] account=${entry.accountId} gave up after ${attempt} attempts: ${e.message}`);
+          this.accounts.markLoggedOut(entry.accountId);
           break;
         }
         const delay = Math.min(MAX_BACKOFF_MS, MIN_BACKOFF_MS * 2 ** (attempt - 1));
-        logger.warn(`[multi-bot] account=${accountId} crashed (${e.message}); reconnect in ${delay}ms (${attempt}/${MAX_RECONNECT_ATTEMPTS})`);
-        await sleep(delay, abort.signal).catch(() => {});
+        logger.warn(`[multi-bot] account=${entry.accountId} crashed (${e.message}); reconnect in ${delay}ms (${attempt}/${MAX_RECONNECT_ATTEMPTS})`);
+        await sleep(delay, entry.abort.signal).catch(() => {});
       }
     }
-    this.running.delete(accountId);
+    entry.bot = null;
+    this.running.delete(entry.accountId);
   }
 }
 
