@@ -20,6 +20,7 @@ import type { ChatRequest, ChatResponse, ModelConfig } from '../core/types.js';
 import { logger } from '../utils/logger.js';
 import { readFileAsBase64 } from '../utils/media.js';
 import { withRetry, modelRejectsTemperature } from './retry.js';
+import { buildSystemPrompt } from './baseline-prompt.js';
 
 const MAX_TOOL_ITERATIONS = 5;
 
@@ -81,9 +82,7 @@ export class OpenAIProvider extends AbstractProvider {
 
   private buildMessages(history: Array<{ role: string; content: unknown }>): ChatCompletionMessageParam[] {
     const messages: ChatCompletionMessageParam[] = [];
-    if (this.config.systemPrompt) {
-      messages.push({ role: 'system', content: this.config.systemPrompt });
-    }
+    messages.push({ role: 'system', content: buildSystemPrompt(this.config.systemPrompt) });
     messages.push(...(sanitizeHistory(history) as any[]));
     return messages;
   }

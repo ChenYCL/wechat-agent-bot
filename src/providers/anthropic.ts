@@ -15,6 +15,7 @@ import type { ChatRequest, ChatResponse, ModelConfig } from '../core/types.js';
 import { logger } from '../utils/logger.js';
 import { readFileAsBase64 } from '../utils/media.js';
 import { withRetry } from './retry.js';
+import { buildSystemPrompt } from './baseline-prompt.js';
 
 const MAX_TOOL_ITERATIONS = 5;
 
@@ -95,7 +96,7 @@ export class AnthropicProvider extends AbstractProvider {
         () => this.client.messages.create({
           model: this.config.model,
           max_tokens: this.config.maxTokens ?? 4096,
-          system: this.config.systemPrompt || undefined,
+          system: buildSystemPrompt(this.config.systemPrompt),
           messages: history as any[],
           temperature: this.config.temperature ?? 0.7,
           ...(tools ? { tools } : {}),
@@ -146,7 +147,7 @@ export class AnthropicProvider extends AbstractProvider {
     const stream = this.client.messages.stream({
       model: this.config.model,
       max_tokens: this.config.maxTokens ?? 4096,
-      system: this.config.systemPrompt || undefined,
+      system: buildSystemPrompt(this.config.systemPrompt),
       messages: history as any[],
       temperature: this.config.temperature ?? 0.7,
     });
