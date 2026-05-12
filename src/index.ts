@@ -120,7 +120,7 @@ async function main() {
   skills.register(createModelSkill(providerAccess));
   skills.register(createClearSkill(providerAccess));
   skills.register(createLangSkill(memoryManager));
-  skills.register(createImageSkill());
+  skills.register(createImageSkill(providerAccess));
   skills.register(createWeatherSkill());
   skills.register(createTranslateSkill(providerAccess));
   skills.register(createSummarySkill(providerAccess));
