@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getModels, addModel, deleteModel, activateModel } from '../lib/api';
+import { getMyModels, addMyModel, deleteMyModel, activateMyModel } from '../lib/api';
 import { Plus, Trash2, Check } from 'lucide-react';
 
 interface ModelForm {
@@ -26,12 +26,12 @@ export default function ModelsPage() {
   const [form, setForm] = useState<ModelForm>(emptyForm);
   const [error, setError] = useState('');
 
-  const load = () => getModels().then(setData).catch((e) => setError(e.message));
+  const load = () => getMyModels().then(setData).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
 
   const handleAdd = async () => {
     try {
-      await addModel(form);
+      await addMyModel(form);
       setForm(emptyForm);
       setShowForm(false);
       load();
@@ -42,12 +42,12 @@ export default function ModelsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this model?')) return;
-    await deleteModel(id);
+    await deleteMyModel(id);
     load();
   };
 
   const handleActivate = async (id: string) => {
-    await activateModel(id);
+    await activateMyModel(id);
     load();
   };
 
@@ -127,7 +127,7 @@ export default function ModelsPage() {
             <div>
               <div className="font-medium text-gray-800">
                 {m.name}
-                {m.id === data.activeId && (
+                {m.isActive && (
                   <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Active</span>
                 )}
               </div>
@@ -135,7 +135,7 @@ export default function ModelsPage() {
               {m.baseUrl && <div className="text-xs text-gray-400">Proxy: {m.baseUrl}</div>}
             </div>
             <div className="flex gap-2">
-              {m.id !== data.activeId && (
+              {!m.isActive && (
                 <button
                   onClick={() => handleActivate(m.id)}
                   className="p-2 text-green-600 hover:bg-green-50 rounded"

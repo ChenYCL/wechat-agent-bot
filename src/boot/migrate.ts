@@ -43,6 +43,12 @@ export function bootstrapAdminIfNeeded(
   if (appConfig.models?.length) {
     let firstId: string | undefined;
     for (const model of appConfig.models) {
+      // Skip placeholder rows from config.example.json — anything without
+      // an API key is unusable and would only cause 401s downstream.
+      if (!model.apiKey || model.apiKey.trim() === '') {
+        logger.info(`[migrate] skipping ${model.id} (no API key)`);
+        continue;
+      }
       try {
         const stored = userProviders.addModel(admin.id, { ...model, isActive: false });
         if (!firstId) firstId = stored.id;
