@@ -16,6 +16,7 @@ import type { Agent as SdkAgent } from 'weixin-agent-sdk';
 import type { Agent, ChatRequest, ChatResponse } from '../core/types.js';
 import type { WeChatAccountStore } from './store.js';
 import { encodeScopedId, decodeScopedId } from './context.js';
+import { rawPushTextMessage } from './raw-push.js';
 import { logger } from '../utils/logger.js';
 
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -130,9 +131,23 @@ export class MultiAccountBot {
       if (content.text) payload.text = content.text;
       if (content.media) payload.media = content.media;
       await entry.bot.sendMessage(payload as any);
+      logger.info(`[multi-bot] sent via SDK to ${parts.accountId} → ${parts.raw} (${content.text?.length ?? 0} chars)`);
       return true;
     } catch (err) {
-      logger.warn(`[multi-bot] sendMessage failed for ${parts.accountId}: ${(err as Error).message}`);
+      const msg = (err as Error).message;
+      // SDK 0.5 hard-requires a context_token cached from a prior inbound
+      // message. If the peer has never messaged us, that fails. Fall back
+      // to the raw HTTP endpoint which accepts requests without it.
+      if (msg.includes('context_token') && content.text) {
+        const raw = await rawPushTextMessage(parts.accountId, parts.raw, content.text);
+        if (raw.ok) {
+          logger.info(`[multi-bot] sent via raw HTTP (no context_token) to ${parts.accountId} → ${parts.raw}`);
+          return true;
+        }
+        logger.warn(`[multi-bot] raw HTTP also failed for ${parts.accountId}: ${raw.error}`);
+        return false;
+      }
+      logger.warn(`[multi-bot] sendMessage failed for ${parts.accountId}: ${msg}`);
       return false;
     }
   }
