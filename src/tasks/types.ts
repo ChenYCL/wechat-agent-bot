@@ -27,7 +27,7 @@ export interface ReminderSchedule {
 }
 
 export interface WatchFetcher {
-  /** Currently only HTTP is supported (covers the long tail with jsonPath). */
+  /** Currently only HTTP is supported (covers the long tail with jsonPath/regex). */
   type: 'http';
   url: string;
   method?: 'GET' | 'POST';
@@ -40,6 +40,13 @@ export interface WatchFetcher {
    * Omit to use the raw response text.
    */
   jsonPath?: string;
+  /**
+   * Alternative to jsonPath, used when the response is plain text (e.g.
+   * sina/tencent stock quote endpoints). The first capture group of the
+   * regex is taken as the extracted value. `regex` wins over `jsonPath`
+   * when both are present.
+   */
+  regex?: string;
 }
 
 export type WatchOp = '<' | '>' | '<=' | '>=' | '==' | '!=' | 'contains' | 'not_contains' | 'changes';

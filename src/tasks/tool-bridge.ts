@@ -47,6 +47,7 @@ const TOOLS: ToolDescriptor[] = [
         body: { type: 'string' },
         headers: { type: 'object', additionalProperties: { type: 'string' } },
         json_path: { type: 'string', description: 'Dotted JSON path into the response (e.g. "bitcoin.usd"). Omit for raw text response.' },
+        regex: { type: 'string', description: 'Regex to extract a value from plain text responses (1st capture group used). For A-share sina: "\\"[^,]*,[^,]*,[^,]*,([0-9.]+)" extracts 当前价.' },
         op: { type: 'string', enum: ['<', '>', '<=', '>=', '==', '!=', 'contains', 'not_contains', 'changes'] },
         value: { description: 'Reference value to compare against (string or number). Omit for op="changes".' },
         one_shot: { type: 'boolean', description: 'If true (default), the watch disables itself after first match.' },
@@ -181,6 +182,7 @@ function createWatch(args: Record<string, unknown>, conv: string, manager: UserT
       headers: args.headers as Record<string, string> | undefined,
       body: str(args.body) || undefined,
       jsonPath: str(args.json_path) || undefined,
+      regex: str(args.regex) || undefined,
     },
     condition: {
       op,

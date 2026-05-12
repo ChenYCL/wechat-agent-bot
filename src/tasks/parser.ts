@@ -40,6 +40,7 @@ const WatchSchema = z.object({
       headers: z.record(z.string()).optional(),
       body: z.string().optional(),
       jsonPath: z.string().optional(),
+      regex: z.string().optional(),
     }),
     condition: z.object({
       op: z.enum(['<', '>', '<=', '>=', '==', '!=', 'contains', 'not_contains', 'changes']),
@@ -208,10 +209,27 @@ If you CANNOT confidently produce a valid spec (ambiguous, missing data source, 
   { "error": "<short reason in the user's language>" }
 
 Some real public endpoints you can use:
-- Weather (free, no key): https://wttr.in/{city}?format=j1  → e.g. jsonPath "current_condition.0.temp_C"
-- A-share stock (free, no key, plain text): https://hq.sinajs.cn/list=sh600519  → response is comma-separated text, no jsonPath
-- US stock via Yahoo (free, no key): https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1m  → jsonPath "chart.result.0.meta.regularMarketPrice"
-- Crypto via CoinGecko (free): https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd  → jsonPath "bitcoin.usd"
+
+== Weather ==
+url: https://wttr.in/{city}?format=j1
+jsonPath: "current_condition.0.temp_C"
+
+== A-share stock (中国 A 股 — 实测可用) ==
+url: https://hq.sinajs.cn/list=<prefix><code>
+  where <prefix> = "sh" for 60xxxx/68xxxx (沪市), "sz" for 00xxxx/30xxxx (深市)
+  e.g. 茅台 600519 → sh600519; 贤丰控股 002141 → sz002141
+headers: { "Referer": "https://finance.sina.com.cn/" }   // ⚠️ required, else empty body
+regex: "\\"[^,]*,[^,]*,[^,]*,([0-9.]+)"   // captures 当前价 (4th field)
+  Sina format: var hq_str_sz002141="股票名,开盘,昨收,当前价,今高,今低,..."
+NO jsonPath — sina returns plain text, not JSON.
+
+== US stock (Yahoo Finance) ==
+url: https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1m
+jsonPath: "chart.result.0.meta.regularMarketPrice"
+
+== Crypto (CoinGecko) ==
+url: https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd
+jsonPath: "bitcoin.usd"
 
 Output JSON only.`;
 }

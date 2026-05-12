@@ -102,6 +102,13 @@ export async function runFetcher(fetcher: WatchFetcher): Promise<string> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const raw = await res.text();
 
+  // Regex wins over jsonPath when both supplied (regex implies text response).
+  if (fetcher.regex) {
+    const m = raw.match(new RegExp(fetcher.regex));
+    if (!m) throw new Error(`regex "${fetcher.regex}" did not match`);
+    return (m[1] ?? m[0]).trim();
+  }
+
   if (!fetcher.jsonPath) return raw.trim();
 
   let parsed: unknown;
