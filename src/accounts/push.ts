@@ -35,9 +35,18 @@ interface AccountState {
   userId: string;
 }
 
+function resolveStateDir(): string {
+  return process.env.OPENCLAW_STATE_DIR?.trim()
+    || process.env.CLAWDBOT_STATE_DIR?.trim()
+    || join(homedir(), '.openclaw');
+}
+
 function loadAccountState(accountId: string): AccountState | null {
-  const file = join(homedir(), '.weixin-agent-sdk', 'accounts', `${accountId}.json`);
-  if (!existsSync(file)) return null;
+  const file = join(resolveStateDir(), 'openclaw-weixin', 'accounts', `${accountId}.json`);
+  if (!existsSync(file)) {
+    logger.warn(`[push] account state file not found: ${file}`);
+    return null;
+  }
   try {
     const data = JSON.parse(readFileSync(file, 'utf-8'));
     if (!data.token || !data.baseUrl) return null;
