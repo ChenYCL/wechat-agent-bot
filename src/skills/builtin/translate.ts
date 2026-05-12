@@ -26,8 +26,9 @@ export function createTranslateSkill(providers: ProviderRegistry): Skill {
 
       try {
         const result = await provider.chat({
-          conversationId: `translate-${Date.now()}`,
+          conversationId: `__translate__${Date.now()}`,
           text: `Translate the following text to ${targetLang}. Only return the translation, nothing else:\n\n${sourceText}`,
+          disableTools: true,
         });
         return { text: `🌐 ${targetLang}:\n${result.text}` };
       } catch (err) {

@@ -16,7 +16,7 @@ export interface McpTool {
 
 export class McpClient {
   private clients = new Map<string, Client>();
-  private tools = new Map<string, { client: Client; serverName: string }>();
+  private tools = new Map<string, { client: Client; serverName: string; description?: string; inputSchema?: Record<string, unknown> }>();
 
   async connect(config: McpServerConfig): Promise<McpTool[]> {
     if (!config.enabled) return [];
@@ -51,7 +51,12 @@ export class McpClient {
     const result: McpTool[] = [];
 
     for (const tool of tools) {
-      this.tools.set(tool.name, { client, serverName: config.name });
+      this.tools.set(tool.name, {
+        client,
+        serverName: config.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema as Record<string, unknown>,
+      });
       result.push({
         name: tool.name,
         description: tool.description,
@@ -75,7 +80,12 @@ export class McpClient {
   getAvailableTools(): McpTool[] {
     const result: McpTool[] = [];
     for (const [name, entry] of this.tools) {
-      result.push({ name, serverName: entry.serverName });
+      result.push({
+        name,
+        serverName: entry.serverName,
+        description: entry.description,
+        inputSchema: entry.inputSchema,
+      });
     }
     return result;
   }

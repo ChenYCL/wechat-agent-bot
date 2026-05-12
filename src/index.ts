@@ -9,7 +9,11 @@ import { ConfigStore } from './config/store.js';
 import { ProviderRegistry } from './providers/registry.js';
 import { SchedulerManager } from './scheduler/manager.js';
 import { McpClient } from './mcp/client.js';
+import { createMcpToolBridge } from './mcp/tool-bridge.js';
+import { composeToolBridges } from './providers/composite-bridge.js';
+import { createUserTaskToolBridge } from './tasks/tool-bridge.js';
 import { SkillRegistry } from './skills/registry.js';
+import { loadSkillsFromDir } from './skills/loader.js';
 import { MessageRouter } from './core/router.js';
 import { WeChatBot } from './core/bot.js';
 import { startServer } from './server/index.js';
@@ -23,6 +27,8 @@ import { createWeatherSkill } from './skills/builtin/weather.js';
 import { createTranslateSkill } from './skills/builtin/translate.js';
 import { createSummarySkill } from './skills/builtin/summary.js';
 import { createReportHandler } from './scheduler/tasks/report.js';
+import { UserTaskManager } from './tasks/manager.js';
+import { createTaskSkill } from './skills/builtin/task.js';
 import { HistoryStore } from './utils/history-store.js';
 import { logger } from './utils/logger.js';
 import { join } from 'node:path';
@@ -51,11 +57,17 @@ async function main() {
     }
   }
 
-  // 3. Initialize scheduler
-  const scheduler = new SchedulerManager();
-  scheduler.registerHandler('report', createReportHandler(() => providers.getActive()));
+  // 4. Initialize scheduler (timezone-aware, with run telemetry)
+  const scheduler = new SchedulerManager({ store: historyStore });
+  scheduler.registerHandler(
+    'report',
+    createReportHandler({
+      getProvider: () => providers.getActive(),
+      outbox: historyStore,
+    }),
+  );
 
-  // 4. Initialize MCP
+  // 5. Initialize MCP and wire it as the provider tool bridge
   const mcp = new McpClient();
   for (const serverConfig of appConfig.mcpServers) {
     try {
@@ -64,13 +76,23 @@ async function main() {
       logger.error(`Failed to connect MCP server ${serverConfig.name}: ${(err as Error).message}`);
     }
   }
-
-  // 5. Initialize memory manager (shares SQLite DB with history store)
+  // 6. Initialize memory manager (shares SQLite DB with history store)
   const memoryManager = new MemoryManager(historyStore);
   await memoryManager.init();
   logger.info('Memory manager initialized (SQLite, permanent)');
 
-  // 6. Initialize skills
+  // 7. Initialize user-task manager (NL-driven reminders & watches)
+  const userTaskManager = new UserTaskManager({ store: historyStore, scheduler });
+  userTaskManager.loadAll();
+
+  // Wire the composite tool bridge: MCP tools + user-task tools.
+  // Providers can now invoke task creation/listing during normal chat.
+  providers.setToolBridge(composeToolBridges(
+    createMcpToolBridge(mcp),
+    createUserTaskToolBridge(userTaskManager),
+  ));
+
+  // 8. Initialize skills (builtin + auto-loaded from data/skills/)
   const skills = new SkillRegistry();
   skills.register(createHelpSkill(() => skills.getAll()));
   skills.register(createModelSkill(providers));
@@ -83,17 +105,30 @@ async function main() {
   skills.register(createRememberSkill(memoryManager));
   skills.register(createRecallSkill(memoryManager));
   skills.register(createForgetSkill(memoryManager));
+  skills.register(createTaskSkill({ manager: userTaskManager, providers, memory: memoryManager }));
 
-  // 7. Schedule tasks
+  try {
+    const userSkills = await loadSkillsFromDir(join(dataDir, 'skills'));
+    for (const skill of userSkills) {
+      skills.register(skill);
+    }
+    if (userSkills.length > 0) {
+      logger.info(`Loaded ${userSkills.length} user skill(s) from data/skills/`);
+    }
+  } catch (err) {
+    logger.warn(`Failed to auto-load user skills: ${(err as Error).message}`);
+  }
+
+  // 9. Schedule admin (config-defined) tasks
   for (const task of appConfig.scheduledTasks) {
     scheduler.schedule(task);
   }
 
-  // 8. Start API server (WebUI)
-  await startServer({ config, providers, scheduler, mcp, skills });
+  // 10. Start API server (WebUI)
+  await startServer({ config, providers, scheduler, mcp, skills, userTasks: userTaskManager });
 
-  // 9. Start WeChat bot
-  const router = new MessageRouter(providers, skills, memoryManager);
+  // 11. Start WeChat bot (with outbox flushing in the router)
+  const router = new MessageRouter(providers, skills, memoryManager, historyStore);
   const bot = new WeChatBot(router);
 
   // Graceful shutdown

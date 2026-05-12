@@ -4,11 +4,37 @@
 import type { Agent, ModelConfig } from '../core/types.js';
 import type { HistoryStore } from '../utils/history-store.js';
 
+export interface ToolDescriptor {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+/**
+ * Per-invocation context passed by the provider to `callTool`. Tools
+ * that need to know which conversation they're acting for (e.g. user
+ * task management) read it from here.
+ */
+export interface ToolContext {
+  conversationId?: string;
+}
+
+/**
+ * Bridge that exposes MCP / external tools to providers. Providers
+ * inject the tool list into model calls and invoke `callTool` when
+ * the model emits a tool_use / tool_call.
+ */
+export interface ToolBridge {
+  listTools(): ToolDescriptor[];
+  callTool(name: string, args: Record<string, unknown>, ctx?: ToolContext): Promise<unknown>;
+}
+
 export interface BaseProvider extends Agent {
   readonly id: string;
   readonly name: string;
   readonly config: ModelConfig;
   setHistoryStore?(store: HistoryStore): void;
+  setToolBridge?(bridge: ToolBridge | null): void;
 }
 
 export abstract class AbstractProvider implements BaseProvider {
@@ -17,6 +43,7 @@ export abstract class AbstractProvider implements BaseProvider {
   readonly config: ModelConfig;
   protected histories = new Map<string, Array<{ role: string; content: unknown }>>();
   protected historyStore: HistoryStore | null = null;
+  protected toolBridge: ToolBridge | null = null;
 
   constructor(config: ModelConfig) {
     this.id = config.id;
@@ -26,6 +53,10 @@ export abstract class AbstractProvider implements BaseProvider {
 
   setHistoryStore(store: HistoryStore): void {
     this.historyStore = store;
+  }
+
+  setToolBridge(bridge: ToolBridge | null): void {
+    this.toolBridge = bridge;
   }
 
   abstract chat(request: import('../core/types.js').ChatRequest): Promise<import('../core/types.js').ChatResponse>;

@@ -4,9 +4,9 @@
  * Reuses your Claude Code subscription (Max/Pro/Team). No API key needed.
  *
  * Multi-turn conversation:
- *   1. First message: `echo "msg" | claude -p --output-format json`
+ *   1. First message: `claude -p --output-format json -- "<msg>"`
  *   2. Get session_id from response
- *   3. Next messages: `echo "msg" | claude -p --resume <session_id>`
+ *   3. Next messages: `claude -p --resume <session_id> -- "<msg>"`
  *   Claude Code persists the session internally and resumes context.
  */
 import { execFile } from 'node:child_process';
@@ -42,32 +42,36 @@ export class ClaudeCodeProvider extends AbstractProvider {
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
+    return this.chatWithRetry(request, false);
+  }
+
+  private async chatWithRetry(request: ChatRequest, retried: boolean): Promise<ChatResponse> {
     let prompt = request.text || '';
     if (request.media) {
       prompt = `[Attachment: ${request.media.type} - ${request.media.filename || 'file'}]\n${prompt}`;
     }
 
-    const args = [
+    const args: string[] = [
       '-p',
       '--output-format', 'json',
       '--dangerously-skip-permissions',
     ];
 
-    // Resume existing session for multi-turn
     const existingSession = this.sessionIds.get(request.conversationId);
     if (existingSession) {
       args.push('--resume', existingSession);
     } else {
-      // New conversation: set model and system prompt
       args.push('--model', this.model);
       args.push('--system-prompt', this.systemPrompt);
     }
 
     if (this.allowedTools.length > 0) {
-      args.push('--allowedTools', ...this.allowedTools);
+      // CLI expects a single comma-separated value (the previous spread
+      // produced an unknown-flag-style error for many CLI versions).
+      args.push('--allowedTools', this.allowedTools.join(','));
     }
 
-    // Pass prompt as CLI argument (not stdin — stdin pipe is unreliable with execFile)
+    // Prompt as final positional argument.
     args.push(prompt);
 
     const sessionTag = request.conversationId.slice(0, 12);
@@ -86,13 +90,12 @@ export class ClaudeCodeProvider extends AbstractProvider {
         if (stderrStr) logger.debug(`[claude-code:stderr] ${stderrStr.slice(0, 200)}`);
       }
 
-      const result: ClaudeJsonResult = JSON.parse((stdout as string).trim());
+      const result: ClaudeJsonResult = JSON.parse(String(stdout).trim());
 
       if (result.is_error) {
         throw new Error(result.result || 'Claude Code returned an error');
       }
 
-      // Save session for multi-turn
       if (result.session_id) {
         this.sessionIds.set(request.conversationId, result.session_id);
       }
@@ -108,11 +111,12 @@ export class ClaudeCodeProvider extends AbstractProvider {
       const msg = (err as Error).message;
       logger.error(`[claude-code] Error: ${msg}`);
 
-      // If resume failed, clear session and retry as new conversation
-      if (existingSession && (msg.includes('No conversation found') || msg.includes('session'))) {
-        logger.info(`[claude-code] Session expired, starting new conversation`);
+      // One-shot resume-recovery: if resume failed because the session
+      // was lost, drop the session and try fresh — but only once.
+      if (!retried && existingSession && isSessionLostError(msg)) {
+        logger.info(`[claude-code] Session expired, starting fresh conversation`);
         this.sessionIds.delete(request.conversationId);
-        return this.chat(request);
+        return this.chatWithRetry(request, true);
       }
 
       throw err;
@@ -123,4 +127,15 @@ export class ClaudeCodeProvider extends AbstractProvider {
     this.sessionIds.delete(conversationId);
     await super.clearSession(conversationId);
   }
+}
+
+function isSessionLostError(msg: string): boolean {
+  // Match specific phrases the CLI uses, not just "session" (too broad).
+  const m = msg.toLowerCase();
+  return (
+    m.includes('no conversation found')
+    || m.includes('session not found')
+    || m.includes('invalid session')
+    || m.includes('session expired')
+  );
 }

@@ -7,7 +7,7 @@ import type { ChatRequest, ChatResponse } from '../../core/types.js';
 const SKILL_ICONS: Record<string, string> = {
   help: '📋', model: '🤖', clear: '🗑️', lang: '🌐',
   image: '📷', weather: '🌤️', translate: '🌐', summary: '📝',
-  remember: '💾', recall: '🔍', forget: '❌',
+  remember: '💾', recall: '🔍', forget: '❌', task: '⏰',
 };
 
 export function createHelpSkill(getSkills: () => Skill[]): Skill {

@@ -45,8 +45,9 @@ export function createSummarySkill(providers: ProviderRegistry): Skill {
 
       try {
         const result = await provider.chat({
-          conversationId: `summary-${Date.now()}`,
+          conversationId: `__summary__${Date.now()}`,
           text: `Please summarize the following content concisely in the same language it's written in. Use bullet points:\n\n${content.slice(0, 8000)}`,
+          disableTools: true,
         });
         return { text: `📝 Summary:\n${result.text}` };
       } catch (err) {

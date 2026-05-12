@@ -50,11 +50,28 @@ export class MemoryManager {
 
   async buildContext(conversationId: string): Promise<string> {
     const memories = this.store.getAllMemories(conversationId);
-    const entries = Object.values(memories);
+    const entries = Object.values(memories).filter((m) => !m.key.startsWith('_'));
     if (entries.length === 0) return '';
-    const lines = entries
-      .filter((m) => !m.key.startsWith('_')) // skip internal keys like _lang
-      .map((m) => `- ${m.key}: ${m.content}`);
+
+    // Keep the most recently updated entries; cap entry content; cap total length.
+    const MAX_ENTRIES = 20;
+    const MAX_CONTENT_PER_ENTRY = 280;
+    const MAX_TOTAL_CHARS = 2_000;
+
+    entries.sort((a, b) => b.updatedAt - a.updatedAt);
+    const selected = entries.slice(0, MAX_ENTRIES);
+
+    const lines: string[] = [];
+    let total = 0;
+    for (const m of selected) {
+      const trimmed = m.content.length > MAX_CONTENT_PER_ENTRY
+        ? `${m.content.slice(0, MAX_CONTENT_PER_ENTRY)}…`
+        : m.content;
+      const line = `- ${m.key}: ${trimmed}`;
+      if (total + line.length > MAX_TOTAL_CHARS) break;
+      lines.push(line);
+      total += line.length + 1;
+    }
     if (lines.length === 0) return '';
     return `\n[User memories]\n${lines.join('\n')}\n`;
   }

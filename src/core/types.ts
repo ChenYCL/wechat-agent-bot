@@ -17,6 +17,12 @@ export interface ChatRequest {
   conversationId: string;
   text?: string;
   media?: ChatMedia;
+  /**
+   * If true, providers MUST NOT advertise tools for this call. Used by
+   * internal LLM calls (parser, /summary, /translate) so they don't
+   * recursively trigger tool actions like task creation.
+   */
+  disableTools?: boolean;
 }
 
 export interface ChatResponse {

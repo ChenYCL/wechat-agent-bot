@@ -2,7 +2,7 @@
  * Provider registry - manages multiple AI providers and
  * allows switching the active one.
  */
-import type { BaseProvider } from './base.js';
+import type { BaseProvider, ToolBridge } from './base.js';
 import type { ModelConfig } from '../core/types.js';
 import type { HistoryStore } from '../utils/history-store.js';
 import { OpenAIProvider } from './openai.js';
@@ -23,12 +23,20 @@ export class ProviderRegistry {
   private activeId: string | null = null;
   private customFactories = new Map<string, ProviderFactory>();
   private historyStore: HistoryStore | null = null;
+  private toolBridge: ToolBridge | null = null;
 
   setHistoryStore(store: HistoryStore): void {
     this.historyStore = store;
     // Apply to existing providers
     for (const provider of this.providers.values()) {
       if (provider.setHistoryStore) provider.setHistoryStore(store);
+    }
+  }
+
+  setToolBridge(bridge: ToolBridge | null): void {
+    this.toolBridge = bridge;
+    for (const provider of this.providers.values()) {
+      if (provider.setToolBridge) provider.setToolBridge(bridge);
     }
   }
 
@@ -47,6 +55,9 @@ export class ProviderRegistry {
     const provider = factory(config);
     if (this.historyStore && provider.setHistoryStore) {
       provider.setHistoryStore(this.historyStore);
+    }
+    if (this.toolBridge && provider.setToolBridge) {
+      provider.setToolBridge(this.toolBridge);
     }
     this.providers.set(config.id, provider);
     logger.info(`Registered provider: ${config.name} (${config.provider}/${config.model})`);
