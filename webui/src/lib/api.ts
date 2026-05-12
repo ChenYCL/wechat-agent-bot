@@ -53,6 +53,41 @@ export const resumeAccount = (accountId: string) =>
 export const deleteAccount = (accountId: string) =>
   request<{ ok: boolean }>(`/wechat-accounts/${accountId}`, { method: 'DELETE' });
 
+// ── User tasks (per-conversation reminders & watches) ──
+export interface UserTask {
+  id: string;
+  ownerConversationId: string;
+  description: string;
+  type: 'reminder' | 'watch';
+  schedule?: { kind: 'once' | 'cron'; runAt?: number; cron?: string };
+  watch?: any;
+  message: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+  lastTriggeredAt: number | null;
+  triggerCount: number;
+  lastSeenValue: string | null;
+}
+export const listUserTasks = (conversationId?: string) => {
+  const qs = conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : '';
+  return request<{ tasks: UserTask[] }>(`/user-tasks${qs}`);
+};
+export const getUserTask = (id: string) =>
+  request<{ task: UserTask }>(`/user-tasks/${id}`);
+export const runUserTask = (id: string) =>
+  request<{ ok: boolean }>(`/user-tasks/${id}/run`, { method: 'POST' });
+export const pauseUserTask = (id: string) =>
+  request<{ ok: boolean }>(`/user-tasks/${id}/pause`, { method: 'POST' });
+export const resumeUserTask = (id: string) =>
+  request<{ ok: boolean }>(`/user-tasks/${id}/resume`, { method: 'POST' });
+export const deleteUserTask = (id: string) =>
+  request<{ ok: boolean }>(`/user-tasks/${id}`, { method: 'DELETE' });
+export const getUserTaskHistory = (id: string, limit = 50) =>
+  request<{ observations: Array<{ value: string | null; matched: boolean; observedAt: number }> }>(
+    `/user-tasks/${id}/history?limit=${limit}`,
+  );
+
 // ── Per-user models ──
 export const getMyModels = () => request<any>('/me/models');
 export const addMyModel = (data: any) =>

@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { Bot, Settings, Clock, Plug, Activity, Zap, Smartphone, LogOut } from 'lucide-react';
+import { Bot, Settings, Clock, Plug, Activity, Zap, Smartphone, LogOut, Bell } from 'lucide-react';
 import ModelsPage from './pages/ModelsPage';
 import TasksPage from './pages/TasksPage';
 import McpPage from './pages/McpPage';
@@ -7,14 +7,16 @@ import SkillsPage from './pages/SkillsPage';
 import StatusPage from './pages/StatusPage';
 import LoginPage from './pages/LoginPage';
 import AccountsPage from './pages/AccountsPage';
+import MyTasksPage from './pages/MyTasksPage';
 import { AuthProvider, useAuth } from './lib/auth-context';
 
 const navItems = [
   { to: '/', icon: Activity, label: 'Status' },
   { to: '/accounts', icon: Smartphone, label: '微信号' },
   { to: '/models', icon: Bot, label: 'Models' },
+  { to: '/my-tasks', icon: Bell, label: '我的任务' },
   { to: '/skills', icon: Zap, label: 'Skills' },
-  { to: '/tasks', icon: Clock, label: 'Tasks' },
+  { to: '/tasks', icon: Clock, label: '系统任务' },
   { to: '/mcp', icon: Plug, label: 'MCP' },
 ];
 
@@ -62,6 +64,7 @@ function Shell() {
           <Route path="/" element={<StatusPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/models" element={<ModelsPage />} />
+          <Route path="/my-tasks" element={<MyTasksPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/mcp" element={<McpPage />} />
