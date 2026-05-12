@@ -39,8 +39,9 @@ import { HistoryStore } from './utils/history-store.js';
 import { AuthStore } from './auth/store.js';
 import { WeChatAccountStore } from './accounts/store.js';
 import { UserProviderManager } from './accounts/provider-manager.js';
-import { ContextResolver } from './accounts/context.js';
+import { ContextResolver, decodeScopedId } from './accounts/context.js';
 import { MultiAccountBot } from './accounts/multi-bot.js';
+import { pushTextMessage } from './accounts/push.js';
 import { bootstrapAdminIfNeeded } from './boot/migrate.js';
 import { logger } from './utils/logger.js';
 import { join } from 'node:path';
@@ -71,6 +72,19 @@ async function main() {
 
   // 5. Scheduler (timezone-aware + telemetry)
   const scheduler = new SchedulerManager({ store: historyStore });
+
+  // Active push: convert a scoped conversation id into an account+peer
+  // pair and call the WeChat HTTP endpoint directly. Returns `true` on
+  // success so handlers know not to also queue via outbox.
+  const wechatPush = async (scopedConv: string, content: { text?: string }): Promise<boolean> => {
+    if (process.env.WECHAT_PUSH === '0') return false;
+    if (!content.text) return false;
+    const parts = decodeScopedId(scopedConv);
+    if (!parts) return false;
+    const r = await pushTextMessage(parts.accountId, parts.raw, content.text);
+    return r.ok;
+  };
+
   // The legacy `report` task expects a single global provider — wire it to
   // the admin's active model so server-wide scheduled reports still work.
   scheduler.registerHandler(
@@ -81,11 +95,12 @@ async function main() {
         return adminId ? userProviders.getActive(adminId) : null;
       },
       outbox: historyStore,
+      send: async (conv, content) => wechatPush(conv, content),
     }),
   );
 
   // 6. User-task manager (per-conversation reminders & watches)
-  const userTaskManager = new UserTaskManager({ store: historyStore, scheduler });
+  const userTaskManager = new UserTaskManager({ store: historyStore, scheduler, deliver: wechatPush });
   userTaskManager.loadAll();
 
   // 7. MCP client + composite tool bridge wired into user providers
