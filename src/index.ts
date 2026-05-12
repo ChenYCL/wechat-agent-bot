@@ -32,6 +32,9 @@ import { createWeatherSkill } from './skills/builtin/weather.js';
 import { createTranslateSkill } from './skills/builtin/translate.js';
 import { createSummarySkill } from './skills/builtin/summary.js';
 import { createTaskSkill } from './skills/builtin/task.js';
+import { createSearchSkill } from './skills/builtin/search.js';
+import { DynamicSearchProvider } from './search/providers.js';
+import { createSearchToolBridge } from './search/tool-bridge.js';
 import { createReportHandler } from './scheduler/tasks/report.js';
 import { UserTaskManager } from './tasks/manager.js';
 import { fromUserProviders } from './skills/provider-access.js';
@@ -108,9 +111,12 @@ async function main() {
       logger.error(`Failed to connect MCP server ${serverConfig.name}: ${(err as Error).message}`);
     }
   }
+  const searchProvider = new DynamicSearchProvider();
+  logger.info(`[search] provider: ${searchProvider.name}`);
   userProviders.setToolBridge(composeToolBridges(
     createMcpToolBridge(mcp),
     createUserTaskToolBridge(userTaskManager),
+    createSearchToolBridge(searchProvider),
   ));
 
   // 8. Skill registry (built-in + user-loaded)
@@ -123,6 +129,7 @@ async function main() {
   skills.register(createLangSkill(memoryManager));
   const lastImageStore = new LastImageStore();
   skills.register(createImageSkill(providerAccess, lastImageStore));
+  skills.register(createSearchSkill(searchProvider));
   skills.register(createWeatherSkill());
   skills.register(createTranslateSkill(providerAccess));
   skills.register(createSummarySkill(providerAccess));

@@ -8,6 +8,7 @@ const SKILL_ICONS: Record<string, string> = {
   help: '📋', model: '🤖', clear: '🗑️', lang: '🌐',
   image: '📷', weather: '🌤️', translate: '🌐', summary: '📝',
   remember: '💾', recall: '🔍', forget: '❌', task: '⏰',
+  search: '🔎',
 };
 
 export function createHelpSkill(getSkills: () => Skill[]): Skill {
