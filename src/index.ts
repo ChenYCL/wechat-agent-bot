@@ -35,6 +35,7 @@ import { createTaskSkill } from './skills/builtin/task.js';
 import { createSearchSkill } from './skills/builtin/search.js';
 import { DynamicSearchProvider } from './search/providers.js';
 import { createSearchToolBridge } from './search/tool-bridge.js';
+import { AutoSearchInjector } from './search/auto-search.js';
 import { createReportHandler } from './scheduler/tasks/report.js';
 import { UserTaskManager } from './tasks/manager.js';
 import { fromUserProviders } from './skills/provider-access.js';
@@ -156,7 +157,8 @@ async function main() {
   }
 
   // 10. Build the router (per-user model resolution) and the multi-account bot
-  const router = new MessageRouter(providerAccess, skills, memoryManager, historyStore, lastImageStore);
+  const autoSearch = new AutoSearchInjector(searchProvider);
+  const router = new MessageRouter(providerAccess, skills, memoryManager, historyStore, lastImageStore, autoSearch);
   const multiBot = new MultiAccountBot(router, accountsStore);
 
   // 11. Start the HTTP/WebUI server (auth + multi-tenant + legacy routes)

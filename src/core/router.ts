@@ -11,6 +11,7 @@ import { SkillRegistry } from '../skills/registry.js';
 import type { MemoryManager } from '../skills/builtin/memory.js';
 import type { HistoryStore } from '../utils/history-store.js';
 import type { LastImageStore } from '../utils/last-image-store.js';
+import type { AutoSearchInjector } from '../search/auto-search.js';
 import { getLangPreference } from '../skills/builtin/lang.js';
 import { logger } from '../utils/logger.js';
 
@@ -22,6 +23,7 @@ export class MessageRouter implements Agent {
   private memoryManager: MemoryManager | null;
   private outbox: HistoryStore | null;
   private lastImage: LastImageStore | null;
+  private autoSearch: AutoSearchInjector | null;
 
   constructor(
     providers: ProviderRegistry | ProviderAccess,
@@ -29,12 +31,14 @@ export class MessageRouter implements Agent {
     memoryManager?: MemoryManager,
     outbox?: HistoryStore,
     lastImage?: LastImageStore,
+    autoSearch?: AutoSearchInjector,
   ) {
     this.providers = providers instanceof ProviderRegistry ? fromRegistry(providers) : providers;
     this.skillRegistry = skillRegistry;
     this.memoryManager = memoryManager ?? null;
     this.outbox = outbox ?? null;
     this.lastImage = lastImage ?? null;
+    this.autoSearch = autoSearch ?? null;
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
@@ -109,6 +113,13 @@ export class MessageRouter implements Agent {
         if (lang) {
           contextPrefix += `\n[IMPORTANT: Always reply in ${lang}. This is the user's language preference.]\n`;
         }
+      }
+
+      // Auto-search for time-sensitive queries even if the model doesn't
+      // call web_search itself (relays like 中转-gpt-5.5 ignore tools).
+      if (this.autoSearch && request.text) {
+        const searchCtx = await this.autoSearch.maybeSearch(request.conversationId, request.text);
+        if (searchCtx) contextPrefix += `\n${searchCtx}\n`;
       }
 
       const enrichedRequest = contextPrefix && request.text
