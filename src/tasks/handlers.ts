@@ -24,11 +24,21 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 
 export async function executeReminder(task: UserTask, store: HistoryStore, deliver: DeliverFn): Promise<ExecuteResult> {
   const text = renderTemplate(task.message, {});
-  const ok = await tryDeliver(task.ownerConversationId, text, store, deliver, `reminder:${task.id}`);
+  const decorated = decorateTriggerText('reminder', text);
+  const ok = await tryDeliver(task.ownerConversationId, decorated, store, deliver, `reminder:${task.id}`);
   return {
     delivered: ok,
     shouldDisable: task.schedule?.kind === 'once',
   };
+}
+
+/** Prefix a trigger message with a clear label + timestamp so the user
+ *  can tell it apart from normal chat. Used for both push and outbox
+ *  paths so behaviour is consistent. */
+function decorateTriggerText(kind: 'reminder' | 'watch', text: string): string {
+  const tag = kind === 'reminder' ? '🔔 定时提醒' : '👁️ 监控触发';
+  const ts = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit' });
+  return `${tag} (${ts})\n${text}`;
 }
 
 export async function executeWatch(task: UserTask, store: HistoryStore, deliver: DeliverFn): Promise<ExecuteResult> {
@@ -51,7 +61,8 @@ export async function executeWatch(task: UserTask, store: HistoryStore, deliver:
   }
 
   const rendered = renderTemplate(task.message, { value: observed });
-  const ok = await tryDeliver(task.ownerConversationId, rendered, store, deliver, `watch:${task.id}`);
+  const decorated = decorateTriggerText('watch', rendered);
+  const ok = await tryDeliver(task.ownerConversationId, decorated, store, deliver, `watch:${task.id}`);
 
   const oneShot = task.watch.oneShot !== false; // default true
   return {

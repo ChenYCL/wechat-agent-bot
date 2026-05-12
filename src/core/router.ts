@@ -118,18 +118,12 @@ export class MessageRouter implements Agent {
     try {
       const queued = this.outbox.drainOutbox(conversationId);
       if (queued.length === 0) return '';
-      const parts = queued.map((q) => {
-        const text = q.payload.text;
-        if (!text) return '';
-        const label = q.source?.startsWith('task:') || q.source?.startsWith('watch:') || q.source?.startsWith('reminder:')
-          ? '🔔 定时提醒'
-          : '📬 排队消息';
-        const at = new Date(q.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit' });
-        return `${label} (${at})\n${text}`;
-      }).filter((t) => !!t);
+      // Handler layer (tasks/handlers.ts) already decorates trigger
+      // messages with 🔔/👁️ headers, so we just stitch them together.
+      const parts = queued.map((q) => q.payload.text).filter((t): t is string => !!t);
       if (parts.length === 0) return '';
       logger.info(`[outbox] Delivered ${queued.length} queued message(s) to ${conversationId}`);
-      return parts.join('\n━━━━━━━━━━\n') + '\n━━━━━━━━━━';
+      return parts.join('\n━━━━━━━━━━\n');
     } catch (err) {
       logger.warn(`[outbox] Drain failed for ${conversationId}: ${(err as Error).message}`);
       return '';
