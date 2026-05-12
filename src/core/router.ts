@@ -10,6 +10,7 @@ import { fromRegistry } from '../skills/provider-access.js';
 import { SkillRegistry } from '../skills/registry.js';
 import type { MemoryManager } from '../skills/builtin/memory.js';
 import type { HistoryStore } from '../utils/history-store.js';
+import type { LastImageStore } from '../utils/last-image-store.js';
 import { getLangPreference } from '../skills/builtin/lang.js';
 import { logger } from '../utils/logger.js';
 
@@ -20,20 +21,30 @@ export class MessageRouter implements Agent {
   private skillRegistry: SkillRegistry;
   private memoryManager: MemoryManager | null;
   private outbox: HistoryStore | null;
+  private lastImage: LastImageStore | null;
 
   constructor(
     providers: ProviderRegistry | ProviderAccess,
     skillRegistry: SkillRegistry,
     memoryManager?: MemoryManager,
     outbox?: HistoryStore,
+    lastImage?: LastImageStore,
   ) {
     this.providers = providers instanceof ProviderRegistry ? fromRegistry(providers) : providers;
     this.skillRegistry = skillRegistry;
     this.memoryManager = memoryManager ?? null;
     this.outbox = outbox ?? null;
+    this.lastImage = lastImage ?? null;
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
+    // Remember every inbound image so /image img2img works across the
+    // common UX of "user sends image, then in the next message asks for
+    // an edit."
+    if (this.lastImage && request.media?.type === 'image' && request.media.filePath) {
+      this.lastImage.put(request.conversationId, request.media.filePath, request.media.mimeType);
+    }
+
     // First: flush any queued scheduled-task deliveries for this conversation.
     const queuedPrefix = await this.drainOutbox(request.conversationId);
 

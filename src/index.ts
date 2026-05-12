@@ -36,6 +36,7 @@ import { createReportHandler } from './scheduler/tasks/report.js';
 import { UserTaskManager } from './tasks/manager.js';
 import { fromUserProviders } from './skills/provider-access.js';
 import { HistoryStore } from './utils/history-store.js';
+import { LastImageStore } from './utils/last-image-store.js';
 import { AuthStore } from './auth/store.js';
 import { WeChatAccountStore } from './accounts/store.js';
 import { UserProviderManager } from './accounts/provider-manager.js';
@@ -120,7 +121,8 @@ async function main() {
   skills.register(createModelSkill(providerAccess));
   skills.register(createClearSkill(providerAccess));
   skills.register(createLangSkill(memoryManager));
-  skills.register(createImageSkill(providerAccess));
+  const lastImageStore = new LastImageStore();
+  skills.register(createImageSkill(providerAccess, lastImageStore));
   skills.register(createWeatherSkill());
   skills.register(createTranslateSkill(providerAccess));
   skills.register(createSummarySkill(providerAccess));
@@ -147,7 +149,7 @@ async function main() {
   }
 
   // 10. Build the router (per-user model resolution) and the multi-account bot
-  const router = new MessageRouter(providerAccess, skills, memoryManager, historyStore);
+  const router = new MessageRouter(providerAccess, skills, memoryManager, historyStore, lastImageStore);
   const multiBot = new MultiAccountBot(router, accountsStore);
 
   // 11. Start the HTTP/WebUI server (auth + multi-tenant + legacy routes)
