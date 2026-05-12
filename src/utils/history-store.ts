@@ -163,11 +163,20 @@ export class HistoryStore {
     const rows = this.db.prepare(
       'SELECT role, content, created_at as timestamp FROM history WHERE conversation_id = ? ORDER BY id ASC',
     ).all(conversationId) as Array<{ role: string; content: string; timestamp: number }>;
-    return rows.map((r) => ({
-      role: r.role,
-      content: JSON.parse(r.content),
-      timestamp: r.timestamp * 1000,
-    }));
+    return rows.map((r) => {
+      const parsed = JSON.parse(r.content);
+      // Back-compat: legacy rows stored only message.content (a string or
+      // content-block array). New rows store the whole message object.
+      // We detect new format by the presence of a `role` field.
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'role' in parsed) {
+        return { ...parsed, timestamp: r.timestamp * 1000 } as HistoryMessage;
+      }
+      return {
+        role: r.role,
+        content: parsed,
+        timestamp: r.timestamp * 1000,
+      };
+    });
   }
 
   async set(conversationId: string, messages: HistoryMessage[]): Promise<void> {
@@ -177,7 +186,9 @@ export class HistoryStore {
         'INSERT INTO history (conversation_id, role, content) VALUES (?, ?, ?)',
       );
       for (const msg of messages) {
-        insert.run(conversationId, msg.role, JSON.stringify(msg.content));
+        // Persist the whole message object (incl. tool_calls / tool_call_id)
+        // so multi-turn tool-use conversations survive restarts.
+        insert.run(conversationId, msg.role, JSON.stringify(msg));
       }
     });
     tx();
@@ -186,7 +197,7 @@ export class HistoryStore {
   async append(conversationId: string, message: HistoryMessage): Promise<void> {
     this.db.prepare(
       'INSERT INTO history (conversation_id, role, content) VALUES (?, ?, ?)',
-    ).run(conversationId, message.role, JSON.stringify(message.content));
+    ).run(conversationId, message.role, JSON.stringify(message));
   }
 
   async clear(conversationId: string): Promise<void> {

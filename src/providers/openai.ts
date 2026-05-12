@@ -84,7 +84,7 @@ export class OpenAIProvider extends AbstractProvider {
     if (this.config.systemPrompt) {
       messages.push({ role: 'system', content: this.config.systemPrompt });
     }
-    messages.push(...(history as any[]));
+    messages.push(...(sanitizeHistory(history) as any[]));
     return messages;
   }
 
@@ -194,4 +194,40 @@ export class OpenAIProvider extends AbstractProvider {
     const last = history[history.length - 1] as { role?: string } | undefined;
     if (last?.role === 'user') history.pop();
   }
+}
+
+/**
+ * Drop turns that would make the upstream API choke:
+ *  - assistant turns with `content: null` AND no `tool_calls` (a
+ *    legacy persisted tool-use turn whose tool_calls were truncated)
+ *  - `tool` turns whose `tool_call_id` is missing/empty (orphans)
+ *  - `tool` turns immediately following a sanitized-out assistant turn
+ *
+ * This keeps malformed legacy rows from breaking new conversations.
+ */
+function sanitizeHistory(history: Array<{ role: string; content: unknown; [k: string]: unknown }>): typeof history {
+  const out: typeof history = [];
+  let lastValidAssistantHadToolCalls = false;
+  for (const m of history) {
+    if (m.role === 'assistant') {
+      const tc = (m as any).tool_calls;
+      const hasTools = Array.isArray(tc) && tc.length > 0 && tc.every((c: any) => c?.id && c.id.length > 0);
+      const hasText = m.content != null && m.content !== '';
+      if (!hasTools && !hasText) continue;  // legacy ghost
+      out.push(m);
+      lastValidAssistantHadToolCalls = hasTools;
+      continue;
+    }
+    if (m.role === 'tool') {
+      const id = (m as any).tool_call_id;
+      if (!id || typeof id !== 'string' || id.length === 0) continue;
+      if (!lastValidAssistantHadToolCalls) continue;  // orphan
+      out.push(m);
+      continue;
+    }
+    // user / system / other roles: pass through
+    out.push(m);
+    lastValidAssistantHadToolCalls = false;
+  }
+  return out;
 }
