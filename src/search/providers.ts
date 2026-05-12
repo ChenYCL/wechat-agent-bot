@@ -111,7 +111,13 @@ class BingProvider implements SearchProvider {
     });
     if (!res.ok) throw new Error(`Bing ${res.status}`);
     const html = await res.text();
-    return parseBingHtml(html, opts.maxResults ?? 5);
+    // Detect Bing's anti-bot CAPTCHA wall — happens often for server IPs
+    if (html.includes('class="captcha"') || html.includes('captcha_text')) {
+      throw new Error('Bing returned CAPTCHA wall — server IP rate-limited');
+    }
+    const results = parseBingHtml(html, opts.maxResults ?? 5);
+    if (results.length === 0) throw new Error('Bing returned no results (possible silent block)');
+    return results;
   }
 }
 

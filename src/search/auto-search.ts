@@ -89,7 +89,13 @@ export class AutoSearchInjector {
     const query = userText.slice(0, 200).replace(this.escapeToken, '').trim();
     try {
       const results = await this.provider.search(query, { maxResults: this.maxResults });
-      if (results.length === 0) return '';
+      if (results.length === 0) {
+        // Tell the model explicitly that the search returned nothing.
+        // Without this, models tend to hallucinate "I just searched and…"
+        // based on their training data and present it as fresh.
+        logger.warn(`[auto-search] 0 results for "${query.slice(0, 60)}"`);
+        return '[Live web search ran for this query and returned NO results. Do NOT fabricate prices, statistics or news. Tell the user the search returned nothing and suggest a more specific query.]\n';
+      }
       const lines: string[] = [
         '[Live web search context — injected automatically because the user asked about a time-sensitive topic.',
         ' Use these facts in your answer. Cite the relevant URL inline if helpful.]',
@@ -107,8 +113,9 @@ export class AutoSearchInjector {
       logger.info(`[auto-search] injected ${results.length} results for "${query.slice(0, 60)}" (${this.provider.name})`);
       return lines.join('\n');
     } catch (err) {
-      logger.warn(`[auto-search] failed: ${(err as Error).message}`);
-      return '';
+      const msg = (err as Error).message;
+      logger.warn(`[auto-search] failed: ${msg}`);
+      return `[Live web search FAILED: ${msg}. Tell the user the search provider is unavailable and that the operator should set a TAVILY_API_KEY (free 1000/mo at app.tavily.com). Do NOT fabricate current data.]\n`;
     }
   }
 }
