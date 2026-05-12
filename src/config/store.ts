@@ -56,6 +56,10 @@ export class ConfigStore {
     } catch (err) {
       logger.error(`Failed to load config: ${(err as Error).message}`);
     }
+    // env vars always win — important for VPS deployments where
+    // operators set PORT / HOST without editing JSON.
+    if (process.env.PORT) this.config.server.port = parseInt(process.env.PORT, 10);
+    if (process.env.HOST) this.config.server.host = process.env.HOST;
     return this.config;
   }
 

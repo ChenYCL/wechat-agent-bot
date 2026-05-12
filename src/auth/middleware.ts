@@ -58,7 +58,10 @@ export function requireUser(req: Request, res: Response, next: NextFunction): vo
 }
 
 export function setSessionCookie(res: Response, token: string, maxAgeMs: number): void {
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  // `Secure` blocks cookies over plain HTTP — only enable when we know
+  // we're behind HTTPS (explicit env opt-in to avoid surprising lockout
+  // on a fresh VPS that doesn't have TLS yet).
+  const secure = process.env.SECURE_COOKIES === '1' ? '; Secure' : '';
   res.setHeader(
     'Set-Cookie',
     `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(maxAgeMs / 1000)}${secure}`,
