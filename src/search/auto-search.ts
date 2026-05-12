@@ -75,7 +75,11 @@ export class AutoSearchInjector {
   async maybeSearch(conversationId: string, userText: string): Promise<string> {
     if (!userText) return '';
     if (userText.includes(this.escapeToken)) return '';
-    if (!looksTimeSensitive(userText)) return '';
+    if (!looksTimeSensitive(userText)) {
+      logger.debug(`[auto-search] skipped (no keyword): "${userText.slice(0, 60)}"`);
+      return '';
+    }
+    logger.info(`[auto-search] triggered for: "${userText.slice(0, 80)}"`);
 
     const now = Date.now();
     const last = this.lastSearchAt.get(conversationId) ?? 0;

@@ -94,40 +94,75 @@ class BraveProvider implements SearchProvider {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DuckDuckGo (no key, free fallback)
+// Bing (no key, free fallback — DDG html endpoint stopped working in 2026)
 // ─────────────────────────────────────────────────────────────────────────────
-class DuckDuckGoProvider implements SearchProvider {
-  readonly name = 'duckduckgo';
+class BingProvider implements SearchProvider {
+  readonly name = 'bing';
   async search(query: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
-    // The HTML endpoint gives real organic results without a key but
-    // returns HTML; we parse the minimal "result" blocks. This is
-    // best-effort and fragile — DDG can change markup any day.
-    const params = new URLSearchParams({ q: query });
-    const res = await fetch(`https://html.duckduckgo.com/html/?${params}`, {
+    const lang = opts.lang === 'zh' ? 'zh-CN' : 'en-US';
+    const mkt = opts.lang === 'zh' ? 'zh-CN' : 'en-US';
+    const params = new URLSearchParams({ q: query, mkt, setlang: lang });
+    const res = await fetch(`https://www.bing.com/search?${params}`, {
       headers: {
-        // DDG html endpoint blocks empty UA
-        'User-Agent': 'Mozilla/5.0 (compatible; wechat-agent-bot/0.1)',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+        'Accept-Language': `${lang},${lang.split('-')[0]};q=0.9,en;q=0.8`,
       },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok) throw new Error(`DDG ${res.status}`);
+    if (!res.ok) throw new Error(`Bing ${res.status}`);
     const html = await res.text();
-    const max = opts.maxResults ?? 5;
-    const results: SearchResult[] = [];
-    const re = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(html)) && results.length < max) {
-      const url = decodeURIComponent((m[1].match(/uddg=([^&]+)/)?.[1]) ?? m[1]);
-      const stripTags = (s: string) => s.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').trim();
-      results.push({
-        title: stripTags(m[2]),
-        url,
-        snippet: stripTags(m[3]),
-        source: 'duckduckgo',
-      });
-    }
-    return results;
+    return parseBingHtml(html, opts.maxResults ?? 5);
   }
+}
+
+function parseBingHtml(html: string, max: number): SearchResult[] {
+  const results: SearchResult[] = [];
+  // Split into per-result blocks at each <li class="b_algo">
+  const positions: number[] = [];
+  const blockRe = /<li[^>]*class="[^"]*b_algo[^"]*"/g;
+  let bm: RegExpExecArray | null;
+  while ((bm = blockRe.exec(html))) positions.push(bm.index);
+  positions.push(html.length);
+
+  for (let i = 0; i < positions.length - 1 && results.length < max; i++) {
+    const chunk = html.slice(positions[i], positions[i + 1]);
+
+    // h2 → a[href] → title text
+    const linkMatch = chunk.match(/<h2[^>]*>[\s\S]*?<a [^>]*href="([^"]+)"[^>]*>([\s\S]+?)<\/a>/);
+    if (!linkMatch) continue;
+    const rawHref = linkMatch[1].replace(/&amp;/g, '&');
+    const title = stripTags(linkMatch[2]).trim();
+    if (!title) continue;
+
+    // Bing wraps the real URL in a ck/a redirect with `u=a1<base64url>`
+    let url = rawHref;
+    const u = rawHref.match(/[?&]u=a1([A-Za-z0-9_-]+)/);
+    if (u) {
+      try {
+        url = Buffer.from(u[1], 'base64url').toString('utf-8');
+      } catch { /* fall back to raw */ }
+    }
+
+    // Snippet: first <p> inside the block. Prefer b_algoSlug / b_lineclampN.
+    const snip = chunk.match(/<p[^>]*class="[^"]*b_(?:algoSlug|lineclamp\d)[^"]*"[^>]*>([\s\S]+?)<\/p>/)
+      ?? chunk.match(/<p[^>]*>([\s\S]+?)<\/p>/);
+    const snippet = snip ? stripTags(snip[1]).trim() : '';
+
+    results.push({ title, url, snippet, source: 'bing' });
+  }
+  return results;
+}
+
+function stripTags(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#?\w+;/g, ' ')
+    .replace(/\s+/g, ' ');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -137,7 +172,7 @@ export function pickSearchProvider(env: NodeJS.ProcessEnv = process.env): Search
   if (env.TAVILY_API_KEY) return new TavilyProvider(env.TAVILY_API_KEY);
   if (env.SERPER_API_KEY) return new SerperProvider(env.SERPER_API_KEY);
   if (env.BRAVE_API_KEY) return new BraveProvider(env.BRAVE_API_KEY);
-  return new DuckDuckGoProvider();
+  return new BingProvider();
 }
 
 /** Re-evaluates the active provider — useful when env changes at runtime. */
@@ -149,9 +184,9 @@ export class DynamicSearchProvider implements SearchProvider {
       const r = await p.search(query, opts);
       return r;
     } catch (err) {
-      logger.warn(`[search] ${p.name} failed: ${(err as Error).message}; falling back to DDG`);
-      if (p.name === 'duckduckgo') throw err;
-      return await new DuckDuckGoProvider().search(query, opts);
+      logger.warn(`[search] ${p.name} failed: ${(err as Error).message}; falling back to Bing`);
+      if (p.name === 'bing') throw err;
+      return await new BingProvider().search(query, opts);
     }
   }
 }
